@@ -1,0 +1,53 @@
+#!/bin/sh /etc/rc.common
+#
+# Copyright (c) Facebook, Inc. and its affiliates.
+#
+# This software may be used and distributed according to the terms of the
+# GNU General Public License version 2.
+
+START=99
+
+move_wlan_to_ovs()
+{
+    local int
+    for int in $(ls /sys/devices/virtual/net/br-guest/brif/); do
+        if [ "${int##wlan}" != "${int}" ]; then
+            brctl delif br-guest ${int}
+            ovs-vsctl add-port br-ovs ${int}
+        fi
+    done
+}
+
+enable_br_wan()
+{
+    ifconfig br-wan >/dev/null 2>&1
+    ret=$?
+    if [ "${ret}" != "0" ]; then
+	# If br-wan does not exist, create it
+	uci set network.wan.type=bridge
+	uci commit
+    fi
+}
+
+start()
+{
+    #enable_br_wan
+    IFMAC=`ifconfig eth0 | grep -o -E '([[:xdigit:]]{1,2}:){5}[[:xdigit:]]{1,2}' | tr : -`
+    ovs-vsctl --may-exist add-br br-ovs -- set bridge br-ovs other-config:dp-desc=$IFMAC
+    ovs-vsctl set bridge br-ovs datapath_type=netdev
+
+    /sbin/ip link add veth0 type veth peer name veth1
+    ifconfig veth0 up
+    ifconfig veth1 up
+
+    # To move all xwf interfaces to ovs bridge
+    sleep 3
+    datapath_id=$( cat /sys/class/net/eth0/address | tr -d ':' )
+    ovs-vsctl set bridge br-ovs other-config:datapath-id=0000${datapath_id}
+    ovs-vsctl set-controller br-ovs tcp:10.1.1.192:6653
+    ovs-vsctl add-port br-ovs veth0 -- set interface veth0 ofport=1
+    brctl addif br-wan veth1
+    move_wlan_to_ovs
+    logger -t xwf `ovs-vsctl show`
+    logger -t xwf `ovs-vsctl -- --columns=name,ofport list interface`
+}

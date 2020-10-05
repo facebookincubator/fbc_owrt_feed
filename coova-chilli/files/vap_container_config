@@ -1,0 +1,44 @@
+# https://coova.github.io/CoovaChilli/chilli.conf(5).html
+# https://github.com/coova/coova-chilli/blob/master/conf/defaults.in
+
+# wan interface for internet access
+HS_WANIF=eth0
+
+# lan interface for subscriber access
+HS_LANIF=eth1
+
+# subscriber network configuration
+HS_NETWORK=10.0.0.0
+HS_NETMASK=255.255.255.0
+
+# use opendns
+HS_DNS1=208.67.222.222
+HS_DNS2=8.8.8.8
+
+# subscriber authentication listening address
+HS_UAMLISTEN=10.0.0.2
+
+# radius settings
+HS_NASID=default_vap_nasid
+HS_RADIUS=127.0.0.1
+HS_RADSECRET=123456
+HS_DEFINTERIMINTERVAL=20
+HS_COAPORT=3799
+
+# captive portal settings
+HS_UAMHOMEPAGE=http://testpartner.expresswifi.com/customer/captive_portal
+
+# enable express wifi mode
+HS_XWFMODE=on
+HS_XWFCONFIGFILE=/etc/chilli/tc.conf
+HS_XWFPIIMODE=off
+
+# enable mac authentication
+HS_MACAUTH=on
+
+# misc settings
+HS_MODE=hotspot
+HS_TYPE=coovachilli
+HS_PROVIDER=Coova
+HS_PROVIDER_LINK=http://coova.github.io/
+HS_LAN_ACCESS=allow

@@ -1,0 +1,4509 @@
+Index: coova-chilli-1.4/conf/Makefile.am
+===================================================================
+--- coova-chilli-1.4.orig/conf/Makefile.am
++++ coova-chilli-1.4/conf/Makefile.am
+@@ -7,7 +7,8 @@ chilli_SCRIPTS = functions up.sh down.sh
+ chilli_DATA = defaults gui-config-default.ini
+ 
+ pythondir = $(libdir)/python
+-python_SCRIPTS = CoovaChilliLib.py
++# CoovaChilliLib.py is a python2 GUI for configuing coova chilli, enabling it requires python2
++# python_SCRIPTS = CoovaChilliLib.py
+ 
+ initdir = $(sysconfdir)/init.d
+ init_SCRIPTS = chilli
+Index: coova-chilli-1.4/conf/functions.in
+===================================================================
+--- coova-chilli-1.4.orig/conf/functions.in
++++ coova-chilli-1.4/conf/functions.in
+@@ -54,7 +54,11 @@ HS_WISPRLOGIN=${HS_WISPRLOGIN:-$HS_UAMSE
+ HS_PAP_OK=${HS_PAP_OK:-on}
+ HS_DNS1=${HS_DNS1:-$HS_DNS}
+ HS_DNS1=${HS_DNS1:-$(grep '^nameserver' /etc/resolv.conf | head -n1 | awk '{print $2}')}
++if [ $(uname) = "Linux" ]; then
+ HS_WANIF=${HS_WANIF:-$(route -n|grep '^0.0.0.0'|head -n1|awk '{print $8}')}
++else
++HS_WANIF=${HS_WANIF:-$(route get default | grep interface | awk '{print $2}')}
++fi
+ 
+ bailout() { echo $1; exit; }
+ 
+@@ -125,7 +129,13 @@ writeconfig() {
+     addconfig1 ${HS_GID:+"gid \"$HS_GID\""}
+ 
+     [ -n "$HS_DHCPGATEWAY" ] && {
+-	HS_DHCPRELAYAGENT=${HS_DHCPRELAYAGENT:-$(ifconfig $(route -n|grep '^0.0.0.0'|awk '{ print $8 }')|grep 'inet addr:'|cut -d: -f 2|cut -d' ' -f1)}
++	if [ $(uname) = "Linux" ]; then
++	HS_DHCPRELAYAGENT=${HS_DHCPRELAYAGENT:-$(ifconfig $(route -n|grep '^0.0.0.0'| \
++	awk '{ print $8 }')|grep 'inet addr:'|cut -d: -f 2|cut -d' ' -f1)}
++	else
++	HS_DHCPRELAYAGENT=${HS_DHCPRELAYAGENT:-$(ifconfig $(netstat -rn | grep 'default' | \
++	head -n1 | awk '{print$7}') | grep 'inet ' | cut -d/ -f 1 | cut -d' ' -f2)}
++	fi
+ 	addconfig1 "dhcpgateway \"$HS_DHCPGATEWAY\""
+ 	addconfig1 "dhcprelayagent \"$HS_DHCPRELAYAGENT\""
+     }
+@@ -265,6 +275,11 @@ writeconfig() {
+ 	test ${HS_DEFINTERIMINTERVAL:-0} -gt 0 && addconfig2 "definteriminterval $HS_DEFINTERIMINTERVAL"
+ 	test ${HS_COAPORT:-0} -gt 0 && addconfig2 "coaport $HS_COAPORT"
+ 
++	[ "$HS_XWFMODE" = "on" ] && addconfig2 "xwfmode"
++  [ "$HS_XWFPIIMODE" = "on" ] && addconfig2 "xwfpiimode"
++	[ -n "$HS_XWFCONFIGFILE" ] && addconfig2 "xwfconfigfile \"$HS_XWFCONFIGFILE\""
++  test ${HS_XWFHIRESINTERVALMS:-0} -gt 0 && addconfig2 "xwfhiresintervalms $HS_XWFHIRESINTERVALMS"
++
+ 	[ -n "$HS_SSLKEYFILE" -a -n "$HS_SSLCERTFILE" ] && {
+ 	    addconfig2 "sslkeyfile $HS_SSLKEYFILE"
+ 	    addconfig2 "sslcertfile $HS_SSLCERTFILE"
+@@ -317,6 +332,10 @@ files_equal() {    # returns 0 for equal
+ 	[ "$(md5sum $1 | cut -f1 -d' ')" = "$(md5sum $2 | cut -f1 -d' ')" ] && return 0;
+ 	return 1;
+     }
++    [ -x /usr/bin/md5 ] || [ -x /sbin/md5 ] || [ -x /bin/md5 ] && {
++	[ "$(md5 $1)" = "$(md5 $2)" ] && return 0;
++	return 1;
++    }
+     return 0;
+ }
+ 
+@@ -367,4 +386,3 @@ radiusconfig() {
+     fi
+     checkfornew
+ }
+-
+Index: coova-chilli-1.4/conf/up.sh.in
+===================================================================
+--- coova-chilli-1.4.orig/conf/up.sh.in
++++ coova-chilli-1.4/conf/up.sh.in
+@@ -10,8 +10,8 @@ rm -f $UNDO_FILE 2>/dev/null
+ 
+ ipt() {
+     opt=$1; shift
+-    echo "iptables -D $*" >> $UNDO_FILE
+-    iptables $opt $*
++    echo "iptables -w -D $*" >> $UNDO_FILE
++    iptables -w $opt $*
+ }
+ 
+ ipt_in() {
+Index: coova-chilli-1.4/configure.ac
+===================================================================
+--- coova-chilli-1.4.orig/configure.ac
++++ coova-chilli-1.4/configure.ac
+@@ -359,6 +359,13 @@ if test x"$enable_largelimits" = xyes; t
+    AC_DEFINE(ENABLE_LARGELIMITS,1,[Enable larger limits for use with non-embedded systems])
+ fi
+ 
++AC_ARG_ENABLE(xwfsdnoob, [AS_HELP_STRING([--enable-xwfsdnoob],[Enable ExpressWifi SDN out of band support])], 
++  enable_xwfsdnoob=$enableval, enable_xwfsdnoob=no)
++
++if test x"$enable_xwfsdnoob" = xyes; then
++   AC_DEFINE(ENABLE_XWF_SDN_OOB,1,[Enable ExpressWifi SDN out of band support])
++fi
++
+ AC_ARG_WITH([openssl],
+  [AS_HELP_STRING([--with-openssl], [enable support for openssl])],[],[with_openssl=no])
+ 
+@@ -397,7 +404,7 @@ AC_ARG_WITH([cyassl],
+  [AS_HELP_STRING([--with-cyassl], [enable support for cyassl])],[],[with_cyassl=no])
+ 
+ AS_IF([test x"$with_cyassl" != xno],
+-  [AC_CHECK_LIB([cyassl], [wolfSSL_Init],
++  [AC_CHECK_LIB([cyassl], [CyaSSL_Init],
+               [AC_SUBST([LIBSSL], ["-lcyassl"])
+                AC_DEFINE([HAVE_CYASSL], [1],
+                          [Define if you have cyassl])
+Index: coova-chilli-1.4/debian/changelog
+===================================================================
+--- coova-chilli-1.4.orig/debian/changelog
++++ coova-chilli-1.4/debian/changelog
+@@ -1,3 +1,9 @@
++coova-chilli (1.4) UNRELEASED; urgency=medium
++
++   * See ChangeLog
++
++ -- David Bird (Coova Technologies) <support@coova.com>  Tue, 03 Jan 2017 12:34:07 +0100
++
+ coova-chilli (1.3.0) unstable; urgency=low
+ 
+    * See ChangeLog
+Index: coova-chilli-1.4/debian/compat
+===================================================================
+--- coova-chilli-1.4.orig/debian/compat
++++ coova-chilli-1.4/debian/compat
+@@ -1 +1 @@
+-7
++10
+Index: coova-chilli-1.4/debian/control
+===================================================================
+--- coova-chilli-1.4.orig/debian/control
++++ coova-chilli-1.4/debian/control
+@@ -2,18 +2,26 @@ Source: coova-chilli
+ Section: net
+ Priority: optional
+ Maintainer: David Bird (Coova Technologies) <support@coova.com>
+-Build-Depends: debhelper (>= 7), libc6-dev | libc6-dev-amd64, gengetopt, libtool, automake, libssl-dev
+-Standards-Version: 3.8.1
++Build-Depends: debhelper (>= 7), libc6-dev | libc6-dev-amd64, gengetopt, libtool, automake, libssl-dev, libjson-c-dev
++Standards-Version: 3.9.8
+ 
+ Package: coova-chilli
+ Architecture: any
+ Replaces: chillispot
+ Conflicts: chillispot
+ Provides: chillispot
+-Depends: iptables, haserl
++Depends:
++ ${shlibs:Depends},
++ iptables,
++ haserl,
++ adduser,
++Suggests:
++ python,
++ python-gtk2,
+ Description: Wireless LAN Access Point Controller (captive portal).
+  Coova-Chilli is an open source captive portal or wireless LAN access point
+  controller, forked from chillispot. It supports web based login which is
+- today's standard for public HotSpots and it supports Wireless Protected Access (WPA) which
+- is the standard of the future. Authentication, Authorization and Accounting (AAA) 
+- is handled by your favorite radius server. Read more at http://coova.github.io/
++ today's standard for public HotSpots and it supports Wireless Protected Access
++ (WPA) which is the standard of the future. Authentication, Authorization and
++ Accounting (AAA) is handled by your favorite radius server. Read more at
++ http://coova.github.io/
+Index: coova-chilli-1.4/miniportal/config-local.sh.in
+===================================================================
+--- coova-chilli-1.4.orig/miniportal/config-local.sh.in
++++ coova-chilli-1.4/miniportal/config-local.sh.in
+@@ -130,7 +130,12 @@ local_login_url() {
+     if [ "$HS_USELOCALUSERS" = "on" ]; then
+ 	line=$(head -1 $USERS)
+ 	if [ "$line" = "" ]; then
++	    if [ -x /usr/bin/md5sum ] || [ -x /bin/md5sum ]; then
+ 	    echo "tos:$(echo '$$$(date)'|md5sum|cut -f1)" >> $USERS
++	    fi
++	    if [ -x /usr/bin/md5 ] || [ -x /sbin/md5 ] || [ -x /bin/md5 ]; then
++	    echo "tos:$(echo '$$$(date)'|md5)" >> $USERS
++	    fi
+ 	    line=$(head -1 $USERS)
+ 	fi
+ 	if [ "$line" != "" ]; then
+@@ -237,7 +242,12 @@ then
+ 	[ "$HTTPS" = "on" ] && HTTP="https"
+ 	URL="$HTTP://$SERVER_NAME/$REQUEST_URI?$QS"
+ 	CHECK="$URL$HS_UAMSECRET"
++	if [ -x /usr/bin/md5sum ] || [ -x /bin/md5sum ]; then
+ 	CHECK_MD5=$(echo -n "$CHECK" |md5sum|cut -d' ' -f1|tr 'a-z' 'A-Z');
++	fi
++	if [ -x /usr/bin/md5 ] || [ -x /sbin/md5 ] || [ -x /bin/md5 ]; then
++	CHECK_MD5=$(echo -n "$CHECK" |md5 |tr 'a-z' 'A-Z');
++	fi
+ 	if [ "$CHECK_MD5" = "$FORM_md" ]; then
+ 	    COOVA_USERURL=$FORM_userurl
+ 	else
+Index: coova-chilli-1.4/src/Makefile.am
+===================================================================
+--- coova-chilli-1.4.orig/src/Makefile.am
++++ coova-chilli-1.4/src/Makefile.am
+@@ -23,7 +23,7 @@ suid_programs =
+ libchilli_la_SOURCES = \
+ chilli.c tun.c ippool.c radius.c md5.c redir.c dhcp.c \
+ iphash.c lookup.c system.h util.c options.c statusfile.c conn.c sig.c \
+-garden.c dns.c session.c pkt.c chksum.c net.c safe.c
++garden.c dns.c session.c pkt.c chksum.c net.c safe.c xwf.c
+ 
+ AM_CFLAGS = -D_GNU_SOURCE -Wall -Werror -fno-builtin -fno-strict-aliasing \
+   -fomit-frame-pointer -funroll-loops -pipe -I$(top_builddir)/bstring \
+Index: coova-chilli-1.4/src/chilli.c
+===================================================================
+--- coova-chilli-1.4.orig/src/chilli.c
++++ coova-chilli-1.4/src/chilli.c
+@@ -29,6 +29,7 @@ struct ippool_t *ippool;          /* Poo
+ struct radius_t *radius;          /* Radius client instance */
+ struct dhcp_t *dhcp = NULL;       /* DHCP instance */
+ struct redir_t *redir = NULL;     /* Redir instance */
++struct xwf_global_info *xwf_gi = NULL;
+ 
+ #ifdef ENABLE_MULTIROUTE
+ #include "rtmon.h"
+@@ -62,10 +63,6 @@ struct in_addr ipv4ll_mask;
+ struct in_addr ssdp;
+ #endif
+ 
+-static int acct_req(acct_type type,
+-		    struct app_conn_t *conn,
+-		    uint8_t status_type);
+-
+ static pid_t chilli_pid = 0;
+ 
+ #ifdef ENABLE_CHILLIPROXY
+@@ -182,19 +179,19 @@ static pid_t launch_daemon(char *name, c
+ #endif
+ 
+ #ifdef ENABLE_CHILLIPROXY
+-static void launch_chilliproxy() {
++static void launch_chilliproxy(void) {
+   proxy_pid = launch_daemon("[chilli_proxy]", SBINDIR "/chilli_proxy");
+ }
+ #endif
+ 
+ #ifdef ENABLE_CHILLIREDIR
+-static void launch_chilliredir() {
++static void launch_chilliredir(void) {
+   redir_pid = launch_daemon("[chilli_redir]", SBINDIR "/chilli_redir");
+ }
+ #endif
+ 
+ #ifdef ENABLE_CHILLIRADSEC
+-static void launch_chilliradsec() {
++static void launch_chilliradsec(void) {
+   radsec_pid = launch_daemon("[chilli_radsec]", SBINDIR "/chilli_radsec");
+ }
+ #endif
+@@ -316,19 +313,19 @@ static void _sigchld(int signum) {
+       syslog(LOG_DEBUG, "%s(%d): child %d terminated", __FUNCTION__, __LINE__, pid);
+ #endif
+ #ifdef ENABLE_CHILLIRADSEC
+-    if (!_options.debug && radsec_pid > 0 && radsec_pid == pid) {
++    if (radsec_pid > 0 && radsec_pid == pid) {
+       syslog(LOG_ERR, "Having to re-launch chilli_radsec... PID %d exited", pid);
+       launch_chilliradsec();
+     }
+ #endif
+ #ifdef ENABLE_CHILLIPROXY
+-    if (!_options.debug && proxy_pid > 0 && proxy_pid == pid) {
++    if (proxy_pid > 0 && proxy_pid == pid) {
+       syslog(LOG_ERR, "Having to re-launch chilli_proxy... PID %d exited", pid);
+       launch_chilliproxy();
+     }
+ #endif
+ #ifdef ENABLE_CHILLIREDIR
+-    if (!_options.debug && redir_pid > 0 && redir_pid == pid) {
++    if (redir_pid > 0 && redir_pid == pid) {
+       syslog(LOG_ERR, "Having to re-launch chilli_redir... PID %d exited", pid);
+       launch_chilliredir();
+     }
+@@ -455,11 +452,11 @@ time_t mainclock_towall(time_t t) {
+   return mainclock.tv_sec;
+ }
+ 
+-time_t mainclock_wall() {
++time_t mainclock_wall(void) {
+   return mainclock_towall(mainclock.tv_sec);
+ }
+ 
+-time_t mainclock_tick() {
++time_t mainclock_tick(void) {
+ #ifdef HAVE_LIBRT
+   struct timespec ts;
+ #if defined(CLOCK_MONOTONIC)
+@@ -487,11 +484,11 @@ time_t mainclock_tick() {
+   return mainclock.tv_sec;
+ }
+ 
+-time_t mainclock_now() {
++time_t mainclock_now(void) {
+   return mainclock.tv_sec;
+ }
+ 
+-time_t mainclock_rt() {
++time_t mainclock_rt(void) {
+   time_t rt = 0;
+ #ifdef HAVE_LIBRT
+   struct timespec ts;
+@@ -561,7 +558,7 @@ static void set_sessionid(struct app_con
+ 
+   snprintf(appconn->s_state.sessionid,
+ 		sizeof(appconn->s_state.sessionid),
+-		"%.8lx%.8x", appconn->rt, appconn->unit);
++		"%.8lld%.8x", (long long int)appconn->rt, appconn->unit);
+ 
+   appconn->s_state.redir.classlen = 0;
+   appconn->s_state.redir.statelen = 0;
+@@ -858,7 +855,11 @@ int runscript(struct app_conn_t *appconn
+  *
+  ***********************************************************/
+ 
++#ifdef ENABLE_XWF_SDN_OOB
++static int newip(struct ippoolm_t **ipm, struct in_addr *hisip, uint8_t *hismac, uint8_t is_reserved) {
++#else
+ static int newip(struct ippoolm_t **ipm, struct in_addr *hisip, uint8_t *hismac) {
++#endif
+ 
+ #ifdef ENABLE_UAMANYIP
+   struct in_addr tmpip;
+@@ -875,8 +876,13 @@ static int newip(struct ippoolm_t **ipm,
+   if (_options.debug)
+     syslog(LOG_DEBUG, "%s(%d): newip %s", __FUNCTION__, __LINE__,  inet_ntoa(*hisip));
+ 
++#ifdef ENABLE_XWF_SDN_OOB
++  if (ippool_newip(ippool, ipm, hisip, 1, is_reserved)) {
++    if (ippool_newip(ippool, ipm, hisip, 0, is_reserved)) {
++#else
+   if (ippool_newip(ippool, ipm, hisip, 1)) {
+     if (ippool_newip(ippool, ipm, hisip, 0)) {
++#endif
+       syslog(LOG_ERR, "Failed to allocate either static or dynamic IP address");
+       return -1;
+     }
+@@ -890,7 +896,7 @@ static int newip(struct ippoolm_t **ipm,
+  * A few functions to manage connections
+  */
+ 
+-static int initconn() {
++static int initconn(void) {
+   checktime = rereadtime = mainclock.tv_sec;
+   return 0;
+ }
+@@ -1035,7 +1041,7 @@ int chilli_getconn(struct app_conn_t **c
+   return -1; /* Not found */
+ }
+ 
+-static int dnprot_terminate(struct app_conn_t *appconn) {
++int dnprot_terminate(struct app_conn_t *appconn) {
+   appconn->s_state.authenticated = 0;
+ #ifdef ENABLE_SESSIONSTATE
+   appconn->s_state.session_state = 0;
+@@ -1045,6 +1051,7 @@ static int dnprot_terminate(struct app_c
+     appconn->s_params.flags &= ~UAM_CLEAR_URL;
+     appconn->s_params.url[0] = 0;
+   }
++
+ #ifdef ENABLE_LEAKYBUCKET
+   appconn->s_state.bucketup = 0;
+   appconn->s_state.bucketdown = 0;
+@@ -1104,6 +1111,7 @@ void session_interval(struct app_conn_t
+   interimtime = mainclock_diffu(conn->s_state.interim_time);
+ 
+   if (conn->s_state.authenticated == 1) {
++    xwf_quota_enforce_interval(xwf_gi, conn);
+     if ((conn->s_params.sessiontimeout) &&
+ 	(sessiontime > conn->s_params.sessiontimeout)) {
+ #ifdef ENABLE_SESSIONSTATE
+@@ -1147,6 +1155,11 @@ void session_interval(struct app_conn_t
+     else if ((conn->s_params.maxtotaloctets) &&
+ 	     ((conn->s_state.input_octets + conn->s_state.output_octets) >
+ 	      conn->s_params.maxtotaloctets)) {
++      if (_options.debug)
++        syslog(LOG_DEBUG, "%s(%d): Session %s reached max quota limit: (usage=%"PRIu64"B) (limit=%"PRIu64"B)\n",
++	       __FUNCTION__, __LINE__, conn->s_state.sessionid,
++	       (conn->s_state.input_octets + conn->s_state.output_octets),
++	       conn->s_params.maxtotaloctets);
+ #ifdef ENABLE_SESSIONSTATE
+       conn->s_state.session_state =
+           RADIUS_VALUE_COOVACHILLI_SESSION_TOTAL_DATALIMIT_REACHED;
+@@ -1173,6 +1186,10 @@ void session_interval(struct app_conn_t
+       acct_req(ACCT_USER, conn, RADIUS_STATUS_TYPE_INTERIM_UPDATE);
+     }
+   }
++  else if (_options.xwfmode && (conn->s_params.interim_interval) &&
++	    (interimtime >= conn->s_params.interim_interval)){
++    acct_req(ACCT_USER, conn, RADIUS_STATUS_TYPE_INTERIM_UPDATE);
++  }
+ #ifdef ENABLE_GARDENACCOUNTING
+   interimtime = mainclock_diffu(conn->s_state.garden_interim_time);
+   if (_options.uamgardendata &&
+@@ -1183,7 +1200,7 @@ void session_interval(struct app_conn_t
+ #endif
+ }
+ 
+-static int checkconn() {
++static int checkconn(void) {
+   struct app_conn_t *conn;
+   struct dhcp_conn_t* dhcpconn;
+   uint32_t checkdiff;
+@@ -1232,7 +1249,7 @@ static int checkconn() {
+   return 0;
+ }
+ 
+-void chilli_freeconn() {
++void chilli_freeconn(void) {
+   struct app_conn_t *conn, *c;
+   struct dhcp_conn_t *d = NULL;
+ 
+@@ -1252,7 +1269,7 @@ void chilli_freeconn() {
+ }
+ 
+ /* Kill all connections and send Radius Acct Stop */
+-int static killconn() {
++int static killconn(void) {
+   struct app_conn_t *conn;
+ 
+   for (conn = firstusedconn; conn; conn = conn->next) {
+@@ -1296,6 +1313,8 @@ int chilli_req_attrs(struct radius_t *ra
+ 		     struct session_state *state) {
+   char *sessionid = state->sessionid;
+   char mac[MACSTRLEN+1];
++  uint8_t pii_prohibited =
++      (pack->code != RADIUS_CODE_ACCESS_REQUEST) && IS_XWF_PII_MODE(xwf_gi);
+ 
+   switch(pack->code) {
+     case RADIUS_CODE_ACCESS_REQUEST:
+@@ -1439,7 +1458,7 @@ int chilli_req_attrs(struct radius_t *ra
+   }
+ 
+   /* Include his MAC address */
+-  if (hismac) {
++  if (hismac && !pii_prohibited) {
+     snprintf(mac, sizeof(mac), MAC_FMT, MAC_ARG(hismac));
+ 
+     radius_addattr(radius, pack, RADIUS_ATTR_CALLING_STATION_ID, 0, 0, 0,
+@@ -1776,8 +1795,7 @@ int static radius_access_accept(struct a
+  * Used to send accounting request to radius server
+  *********************************************************/
+ 
+-static int acct_req(acct_type type,
+-		    struct app_conn_t *conn, uint8_t status_type)
++int acct_req(acct_type type, struct app_conn_t *conn, uint8_t status_type)
+ {
+   struct radius_packet_t radius_pack;
+   uint32_t service_type = 0;
+@@ -1859,6 +1877,13 @@ static int acct_req(acct_type type,
+         break;
+ #endif
+       case ACCT_USER:
++        if (IS_XWF_PII_MODE(xwf_gi)) {
++          radius_addattr(radius, &radius_pack, RADIUS_ATTR_VENDOR_SPECIFIC,
++                         RADIUS_VENDOR_XWF, RADIUS_ATTR_XWF_CAPTIVE_PORTAL_TOKEN,
++                         0, conn->s_state.xwf_s.xwf_cp_token,
++                         strlen((char *)conn->s_state.xwf_s.xwf_cp_token));
++          break;
++        }
+         radius_addattr(radius, &radius_pack, RADIUS_ATTR_USER_NAME, 0, 0, 0,
+                        (uint8_t*) conn->s_state.redir.username,
+                        strlen(conn->s_state.redir.username));
+@@ -1937,6 +1962,13 @@ static int acct_req(acct_type type,
+         break;
+ #endif
+       case ACCT_USER:
++        timediff = mainclock_diffu(conn->s_state.start_time);
++        radius_addattr(radius, &radius_pack, RADIUS_ATTR_ACCT_SESSION_TIME, 0, 0,
++                       timediff, NULL, 0);
++        if (IS_XWF_FULL_MODE(xwf_gi)) { //XWF FULL
++          xwf_add_acct_attrs(xwf_gi, &conn->s_state.xwf_s, radius, &radius_pack);
++          break;
++        }
+         radius_addattr(radius, &radius_pack, RADIUS_ATTR_ACCT_INPUT_OCTETS, 0, 0,
+                        (uint32_t) conn->s_state.input_octets, NULL, 0);
+         radius_addattr(radius, &radius_pack, RADIUS_ATTR_ACCT_OUTPUT_OCTETS, 0, 0,
+@@ -1951,11 +1983,8 @@ static int acct_req(acct_type type,
+                        conn->s_state.input_packets, NULL, 0);
+         radius_addattr(radius, &radius_pack, RADIUS_ATTR_ACCT_OUTPUT_PACKETS, 0, 0,
+                        conn->s_state.output_packets, NULL, 0);
+-
+-        timediff = mainclock_diffu(conn->s_state.start_time);
+-
+-        radius_addattr(radius, &radius_pack, RADIUS_ATTR_ACCT_SESSION_TIME, 0, 0,
+-                       timediff, NULL, 0);
++        conn->s_state.xwf_s.last_accounted_total_octets =
++            conn->s_state.input_octets + conn->s_state.output_octets;
+         break;
+     }
+ 
+@@ -2079,7 +2108,11 @@ int chilli_assign_snat(struct app_conn_t
+     syslog(LOG_DEBUG, "%s(%d): SNAT ourip: %s", __FUNCTION__, __LINE__, inet_ntoa(appconn->ourip));
+   }
+ 
++#ifdef ENABLE_XWF_SDN_OOB
++  if (ippool_newip(ippool, &newipm, &appconn->natip, 0, 0)) {
++#else
+   if (ippool_newip(ippool, &newipm, &appconn->natip, 0)) {
++#endif
+     syslog(LOG_ERR, "Failed to allocate SNAT IP address");
+     /*
+      *  Clean up the static pool listing too, it's misconfigured now.
+@@ -2108,70 +2141,80 @@ int chilli_assign_snat(struct app_conn_t
+  *
+  ***********************************************************/
+ 
+-int dnprot_reject(struct app_conn_t *appconn) {
+-  struct dhcp_conn_t* dhcpconn = NULL;
+-  /*struct ippoolm_t *ipm;*/
+-
+-  if (appconn->is_adminsession) return 0;
+-
+-  switch (appconn->dnprot) {
+-
+-#ifdef ENABLE_EAPOL
+-    case DNPROT_EAPOL:
+-      if (!(dhcpconn = (struct dhcp_conn_t*) appconn->dnlink)) {
+-        syslog(LOG_ERR, "No downlink protocol");
+-        return 0;
+-      }
++static int __dnprot_reject(struct app_conn_t *appconn, int cleansession) {
++   struct dhcp_conn_t* dhcpconn = NULL;
++   /*struct ippoolm_t *ipm;*/
++
++   if (appconn->is_adminsession) return 0;
++
++   switch (appconn->dnprot) {
++
++ #ifdef ENABLE_EAPOL
++     case DNPROT_EAPOL:
++       if (!(dhcpconn = (struct dhcp_conn_t*) appconn->dnlink)) {
++         syslog(LOG_ERR, "No downlink protocol");
++         return 0;
++       }
+ 
+-      dhcp_sendEAPreject(dhcpconn, NULL, 0);
+-      return 0;
+-#endif
++       dhcp_sendEAPreject(dhcpconn, NULL, 0);
++       return 0;
++ #endif
+ 
+-    case DNPROT_UAM:
+-      if (_options.debug)
+-        syslog(LOG_DEBUG, "%s(%d): Rejecting UAM", __FUNCTION__, __LINE__);
+-      return 0;
++     case DNPROT_UAM:
++       if (_options.debug)
++         syslog(LOG_DEBUG, "%s(%d): Rejecting UAM", __FUNCTION__, __LINE__);
++       return 0;
+ 
+-#ifdef ENABLE_RADPROXY
+-    case DNPROT_WPA:
+-      return radius_access_reject(appconn);
+-#endif
++ #ifdef ENABLE_RADPROXY
++     case DNPROT_WPA:
++       return radius_access_reject(appconn);
++ #endif
++
++     case DNPROT_MAC:
++       /* remove the username since we're not logged in */
++       if (cleansession && !appconn->s_state.authenticated)
++         strlcpy(appconn->s_state.redir.username, "-", USERNAMESIZE);
++
++       if (!(dhcpconn = (struct dhcp_conn_t *)appconn->dnlink)) {
++         syslog(LOG_ERR, "No downlink protocol");
++         return 0;
++       }
+ 
+-    case DNPROT_MAC:
+-      /* remove the username since we're not logged in */
+-      if (!appconn->s_state.authenticated)
+-        strlcpy(appconn->s_state.redir.username, "-", USERNAMESIZE);
++       if (_options.macauthdeny) {
++         dhcpconn->authstate = DHCP_AUTH_DROP;
++         appconn->dnprot = DNPROT_NULL;
++       }
++       else {
++         dhcpconn->authstate = DHCP_AUTH_DNAT;
++         if (!_options.xwfmode) {
++           appconn->dnprot = DNPROT_UAM;
++         }
++       }
+ 
+-      if (!(dhcpconn = (struct dhcp_conn_t *)appconn->dnlink)) {
+-        syslog(LOG_ERR, "No downlink protocol");
+-        return 0;
+-      }
++       return 0;
+ 
+-      if (_options.macauthdeny) {
+-        dhcpconn->authstate = DHCP_AUTH_DROP;
+-        appconn->dnprot = DNPROT_NULL;
+-      }
+-      else {
+-        dhcpconn->authstate = DHCP_AUTH_DNAT;
+-        appconn->dnprot = DNPROT_UAM;
+-      }
++     case DNPROT_NULL:
++ #ifdef ENABLE_LAYER3
++     case DNPROT_LAYER3:
++ #endif
++       return 0;
+ 
+-      return 0;
++     default:
++       syslog(LOG_ERR, "Unknown downlink protocol");
++       return 0;
++   }
++ }
+ 
+-    case DNPROT_NULL:
+-#ifdef ENABLE_LAYER3
+-    case DNPROT_LAYER3:
+-#endif
+-      return 0;
++int dnprot_reject(struct app_conn_t *appconn) {
++  return __dnprot_reject(appconn, 1);
++}
+ 
+-    default:
+-      syslog(LOG_ERR, "Unknown downlink protocol");
+-      return 0;
+-  }
++int dnprot_hold(struct app_conn_t *appconn) {
++  return __dnprot_reject(appconn, 0);
+ }
+ 
+ #if defined(ENABLE_RADPROXY) || defined(ENABLE_EAPOL)
+-int static dnprot_challenge(struct app_conn_t *appconn) {
++int dnprot_challenge(struct app_conn_t *appconn) {
+ 
+   switch (appconn->dnprot) {
+ 
+@@ -2213,7 +2256,6 @@ int static dnprot_challenge(struct app_c
+ 
+ int dnprot_accept(struct app_conn_t *appconn) {
+   struct dhcp_conn_t* dhcpconn = NULL;
+-
+   if (appconn->is_adminsession) return 0;
+ 
+   if (!appconn->hisip.s_addr) {
+@@ -2237,7 +2279,8 @@ int dnprot_accept(struct app_conn_t *app
+ 
+       /* This is the one and only place eapol authentication is accepted */
+ 
+-      dhcpconn->authstate = DHCP_AUTH_PASS;
++      dhcpconn->authstate = IS_XWF_FULL_MODE(xwf_gi) ? DHCP_AUTH_TC_BASED :
++						       DHCP_AUTH_PASS;
+ 
+       /* Tell client it was successful */
+       dhcp_sendEAP(dhcpconn, appconn->chal, appconn->challen);
+@@ -2299,8 +2342,9 @@ int dnprot_accept(struct app_conn_t *app
+                      &appconn->hisip, &appconn->hismask,
+                      &appconn->ourip, &appconn->mask,
+                      &appconn->dns1, &appconn->dns2);
++      dhcpconn->authstate = IS_XWF_FULL_MODE(xwf_gi) ? DHCP_AUTH_TC_BASED :
++						       DHCP_AUTH_PASS;
+ 
+-      dhcpconn->authstate = DHCP_AUTH_PASS;
+       break;
+ 
+     case DNPROT_NULL:
+@@ -2351,7 +2395,8 @@ int dnprot_accept(struct app_conn_t *app
+ #endif
+ 
+     /* if (!(appconn->s_params.flags & IS_UAM_REAUTH))*/
+-    acct_req(ACCT_USER, appconn, RADIUS_STATUS_TYPE_START);
++    if (!_options.xwfmode)
++      acct_req(ACCT_USER, appconn, RADIUS_STATUS_TYPE_START);
+ 
+     /* Run connection up script */
+     if (_options.conup && !(appconn->s_params.flags & NO_SCRIPT)) {
+@@ -3870,7 +3915,7 @@ session_disconnect(struct app_conn_t *ap
+   return 0;
+ }
+ 
+-static int
++int
+ upprot_getip(struct app_conn_t *appconn,
+ 	     struct in_addr *hisip,
+ 	     struct in_addr *hismask) {
+@@ -3892,7 +3937,11 @@ upprot_getip(struct app_conn_t *appconn,
+   if (ipm == 0) {
+     /* Allocate static or dynamic IP address */
+ 
++#ifdef ENABLE_XWF_SDN_OOB
++    if (newip(&ipm, hisip, dhcpconn ? dhcpconn->hismac : 0, dhcpconn->is_reserved))
++#else
+     if (newip(&ipm, hisip, dhcpconn ? dhcpconn->hismac : 0))
++#endif
+       return dnprot_reject(appconn);
+ 
+     appconn->hisip.s_addr = ipm->addr.s_addr;
+@@ -4266,6 +4315,9 @@ config_radius_session(struct session_par
+     params->sessionterminatetime = 0;
+ 
+   session_param_defaults(params);
++
++  if (_options.xwfmode)
++    xwf_config_radius_session(xwf_gi, params, pack, appconn, reconfig);
+ }
+ 
+ static int chilliauth_cb(struct radius_t *radius,
+@@ -5024,12 +5076,19 @@ int cb_dhcp_request(struct dhcp_conn_t *
+ 
+   } else {
+ 
+-    if ( ! conn->is_reserved) {
++#ifdef ENABLE_XWF_SDN_OOB
++    if (_options.xwfmode || ! conn->is_reserved) {
+ 
+-      if ((_options.macoklen) &&
++      if (!_options.xwfmode && (_options.macoklen) &&
+ 	  (appconn->dnprot == DNPROT_DHCP_NONE) &&
+ 	  !maccmp(conn->hismac)) {
++#else
++    if ( ! conn->is_reserved) {
+ 
++      if ((_options.macoklen) &&
++         (appconn->dnprot == DNPROT_DHCP_NONE) &&
++         !maccmp(conn->hismac)) {
++#endif
+ 	/*
+ 	 *  When using macallowed option, and hismac matches.
+ 	 */
+@@ -5098,7 +5157,11 @@ int cb_dhcp_request(struct dhcp_conn_t *
+ 
+     /* Allocate dynamic IP address */
+     /* XXX  if (ippool_newip(ippool, &ipm, &appconn->reqip, 0)) {*/
++#ifdef ENABLE_XWF_SDN_OOB
++    if (newip(&ipm, &appconn->reqip, conn->hismac, conn->is_reserved)) {
++#else
+     if (newip(&ipm, &appconn->reqip, conn->hismac)) {
++#endif
+       syslog(LOG_ERR, "Failed allocate dynamic IP address");
+       return -1;
+     }
+@@ -5151,7 +5214,7 @@ int cb_dhcp_request(struct dhcp_conn_t *
+ 		   &_options.dns1, &_options.dns2);
+   }
+ 
+-  if (!appconn->s_state.authenticated) {
++  if (!appconn->s_state.authenticated && (conn->authstate == DHCP_AUTH_NONE)) {
+ 
+     if (domacauth) {
+       auth_radius(appconn, 0, 0, dhcp_pkt, dhcp_len);
+@@ -5246,8 +5309,13 @@ struct app_conn_t * chilli_connect_layer
+   if (ippool_getip(ippool, &ipm, src)) {
+     if (_options.debug)
+       syslog(LOG_DEBUG, "%s(%d): New Layer3 %s", __FUNCTION__, __LINE__, inet_ntoa(*src));
++#ifdef ENABLE_XWF_SDN_OOB
++    if (ippool_newip(ippool, &ipm, src, 1, 0)) {
++      if (ippool_newip(ippool, &ipm, src, 0, 0)) {
++#else
+     if (ippool_newip(ippool, &ipm, src, 1)) {
+       if (ippool_newip(ippool, &ipm, src, 0)) {
++#endif
+ 	syslog(LOG_ERR, "Failed to allocate either static or dynamic IP address");
+ 	return 0;
+       }
+@@ -5290,10 +5358,110 @@ static char *state2name(int authstate) {
+ #ifdef ENABLE_LAYER3
+     case DHCP_AUTH_ROUTER: return "layer2";
+ #endif
++    case DHCP_AUTH_TC_BASED: return "tc_based";
+     default:               return "unknown";
+   }
+ }
+ 
++static int xwf_session_json_fmt(struct xwf_session *xwf_s, bstring json) {
++  bstring tmp = bfromcstr("");
++  int first_auth_tc = 1;
++  int tc = 0;
++
++  if (!_options.xwfmode)
++    goto exit;
++
++  bcatcstr(json,",\"xwfsession\":{");
++
++  bassignformat(tmp, "\"xwf_cp_token\":\"%s\"",
++		xwf_s->xwf_cp_token);
++  bconcat(json, tmp);
++  if (!IS_XWF_FULL_MODE(xwf_gi)) {
++    bcatcstr(json,",\"last_accounted_total_octets\":");
++    bassignformat(tmp, "%"PRIu64, xwf_s->last_accounted_total_octets);
++    bconcat(json, tmp);
++    goto json_finish;
++  }
++
++  bcatcstr(json, ",\"total_tcp_packets\":");
++  bassignformat(tmp, "%"PRIu64, xwf_s->tcp_retransmit_stats.total_packets);
++  bconcat(json, tmp);
++  bcatcstr(json, ",\"sampled_tcp_packets\":");
++  bassignformat(tmp, "%"PRIu64, xwf_s->tcp_retransmit_stats.sampled_packets);
++  bconcat(json, tmp);
++  bcatcstr(json, ",\"retransmit_tcp_packets\":");
++  bassignformat(tmp, "%"PRIu64, xwf_s->tcp_retransmit_stats.retransmit_packets);
++  bconcat(json, tmp);
++
++  bassignformat(tmp, ",\"authorized_traffic_classes\":[",
++		xwf_s->xwf_cp_token);
++  bconcat(json, tmp);
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    struct xwf_tc_stats *stats = &xwf_s->tc[tc].tc_stats;
++
++    if (!xwf_gi->tc[tc].valid || !(xwf_s->tc[tc].flags & XWF_TC_AUTHORIZED))
++      continue;
++
++    if (first_auth_tc) {
++      bcatcstr(json,"{");
++      first_auth_tc = 0;
++    }
++    else {
++      bcatcstr(json,",{");
++    }
++    bassignformat(tmp, "\"traffic_class_name\":\"%s\"", xwf_gi->tc[tc].tc_name);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"last_accounted_total_octets\":");
++    bassignformat(tmp, "%"PRIu64, xwf_s->tc[tc].last_accounted_total_octets);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"max_total_octets\":");
++    bassignformat(tmp, "%"PRIu64, xwf_s->tc[tc].max_total_octets);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"in_packets\":");
++    bassignformat(tmp, "%"PRIu64, stats->input_packets);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"in_octets\":");
++    bassignformat(tmp, "%"PRIu64, stats->input_octets);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"out_packets\":");
++    bassignformat(tmp, "%"PRIu64, stats->output_packets);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"out_octets\":");
++    bassignformat(tmp, "%"PRIu64, stats->output_octets);
++    bconcat(json, tmp);
++    struct xwf_tc_hires_window *hires_window = xwf_get_valid_hires_window(&stats->hires_stats);
++    int valid_window = hires_window != NULL;
++    bcatcstr(json,",\"hires_max_in_octets_per_sec\":");
++    bassignformat(tmp, "%"PRIu64, valid_window ?
++            hires_window->max_interval_input_octets*1000/XWF_HIRES_INTERVAL_SIZE_MS
++            : 0);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"hires_max_out_octets_per_sec\":");
++    bassignformat(tmp, "%"PRIu64, valid_window ?
++            hires_window->max_interval_output_octets*1000/XWF_HIRES_INTERVAL_SIZE_MS
++            : 0);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"hires_window_in_octets\":");
++    bassignformat(tmp, "%"PRIu64, valid_window ? hires_window->total_input_octets : 0);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"hires_window_out_octets\":");
++    bassignformat(tmp, "%"PRIu64, valid_window ? hires_window->total_output_octets : 0);
++    bconcat(json, tmp);
++    bcatcstr(json,",\"hires_non_zero_intervals_in_window\":");
++    bassignformat(tmp, "%"PRIu64, valid_window ? hires_window->non_zero_intervals : 0);
++    bconcat(json, tmp);
++    bcatcstr(json,"}");
++  }
++  bcatcstr(json,"]");
++
++json_finish:
++  bcatcstr(json,"}");
++exit:
++  bdestroy(tmp);
++
++  return 0;
++}
++
+ int chilli_getinfo(struct app_conn_t *appconn, bstring b, int fmt) {
+   uint32_t sessiontime = 0;
+   uint32_t idletime = 0;
+@@ -5304,16 +5472,54 @@ int chilli_getinfo(struct app_conn_t *ap
+   }
+ 
+   switch(fmt) {
+-#ifdef ENABLE_JSON
+     case LIST_JSON_FMT:
+-      if (appconn->s_state.authenticated)
++      if (appconn->s_state.authenticated) {
+         session_json_fmt(&appconn->s_state, &appconn->s_params, b, 0);
++        if (_options.xwfmode)
++          xwf_session_json_fmt(&appconn->s_state.xwf_s, b);
++      }
+       break;
+-#endif
+     default:
+       {
++        int tc = 0;
++        int auth_tc_num = 0;
++        int auth_tc[XWF_MAX_TC_NUM];
+         bstring tmp = bfromcstr("");
+ 
++        /* adding: xwf authorized tcs */
++        if (IS_XWF_FULL_MODE(xwf_gi) && appconn->s_state.authenticated) {
++          struct xwf_tcp_retransmit_stats *retrans = &appconn->s_state.xwf_s.tcp_retransmit_stats;
++          bassignformat(tmp, " tcp_retransmits:%.2f%%", retrans->sampled_packets == 0 ? 0 :
++                  (float) 100*retrans->retransmit_packets/retrans->sampled_packets);
++          bconcat(b, tmp);
++          bassigncstr(tmp, " [");
++          bconcat(b, tmp);
++          for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++            if (xwf_gi->tc[tc].valid &&
++                (appconn->s_state.xwf_s.tc[tc].flags & XWF_TC_AUTHORIZED)) {
++              auth_tc[auth_tc_num++] = tc;
++            }
++          }
++          for (tc = 0; tc < auth_tc_num; tc++) {
++            struct xwf_tc_stats *stats = &appconn->s_state.xwf_s.tc[auth_tc[tc]].tc_stats;
++            struct xwf_tc_hires_window *hires_window = xwf_get_valid_hires_window(&stats->hires_stats);
++            int valid_window = hires_window != NULL;
++
++            bassignformat(tmp,
++			  "%s(Q%"PRIu64",in:%"PRIu64"/%"PRIu64"B,out:%"PRIu64"/%"PRIu64
++                "B,max_in:%"PRIu64"B/s,max_out:%"PRIu64"B/s)%c",
++			  xwf_gi->tc[auth_tc[tc]].tc_name,
++			  appconn->s_state.xwf_s.tc[auth_tc[tc]].max_total_octets,
++			  stats->input_packets, stats->input_octets,
++			  stats->output_packets, stats->output_octets,
++        valid_window ?
++              hires_window->max_interval_input_octets*1000/XWF_HIRES_INTERVAL_SIZE_MS : 0,
++        valid_window ?
++              hires_window->max_interval_output_octets*1000/XWF_HIRES_INTERVAL_SIZE_MS : 0,
++        (tc < (auth_tc_num - 1)) ? ',' : ']');
++            bconcat(b, tmp);
++          }
++        }
+         /* adding: session-id auth-state user-name */
+         bassignformat(tmp, " %.*s %d %.*s",
+                       appconn->s_state.sessionid[0] ? strlen(appconn->s_state.sessionid) : 1,
+@@ -5472,7 +5678,6 @@ void chilli_print(bstring s, int listfmt
+     bstring tmp = bfromcstr("");
+ 
+     switch(listfmt) {
+-#ifdef ENABLE_JSON
+       case LIST_JSON_FMT:
+         if ((conn && conn != dhcp->firstusedconn) ||
+             (appconn && appconn != firstusedconn))
+@@ -5507,7 +5712,6 @@ void chilli_print(bstring s, int listfmt
+ 
+         bcatcstr(b, "}");
+         break;
+-#endif
+ 
+       default:
+         if (conn && !appconn)
+@@ -5548,6 +5752,7 @@ void chilli_print(bstring s, int listfmt
+ 
+ static void
+ clear_appconn(struct app_conn_t *appconn) {
++  memset(&appconn->s_state.xwf_s, 0, sizeof(appconn->s_state.xwf_s));
+   appconn->s_params.bandwidthmaxup =
+       appconn->s_params.bandwidthmaxdown =
+       appconn->s_params.maxinputoctets =
+@@ -5557,6 +5762,8 @@ clear_appconn(struct app_conn_t *appconn
+   appconn->s_params.idletimeout = 0;
+   appconn->s_params.interim_interval = 0;
+   appconn->s_params.sessionterminatetime = 0;
++  if (appconn->dnlink && _options.xwfmode)
++    ((struct dhcp_conn_t*) appconn->dnlink)->authstate = DHCP_AUTH_NONE;
+ }
+ 
+ int terminate_appconn(struct app_conn_t *appconn, int terminate_cause) {
+@@ -5581,16 +5788,19 @@ int terminate_appconn(struct app_conn_t
+     }
+ #endif
+ 
+-    if (_options.condown && !(appconn->s_params.flags & NO_SCRIPT)) {
+-      if (_options.debug)
+-        syslog(LOG_DEBUG, "%s(%d): Calling connection down script: %s\n", __FUNCTION__, __LINE__, _options.condown);
+-      runscript(appconn, _options.condown, 0, 0);
++    if (_options.xwfmode && (terminate_cause == RADIUS_TERMINATE_CAUSE_SESSION_TIMEOUT)) {
++      acct_req(ACCT_USER, appconn, RADIUS_STATUS_TYPE_INTERIM_UPDATE);
++    }
++    else {
++      clear_appconn(appconn);
++      set_sessionid(appconn, 0);
++      acct_req(ACCT_USER, appconn, RADIUS_STATUS_TYPE_STOP);
++      if (_options.condown && !(appconn->s_params.flags & NO_SCRIPT)) {
++        if (_options.debug)
++          syslog(LOG_DEBUG, "%s(%d): Calling connection down script: %s\n", __FUNCTION__, __LINE__, _options.condown);
++        runscript(appconn, _options.condown, 0, 0);
++      }
+     }
+-
+-    acct_req(ACCT_USER, appconn, RADIUS_STATUS_TYPE_STOP);
+-
+-    clear_appconn(appconn);
+-    set_sessionid(appconn, 0);
+ 
+ #ifdef ENABLE_STATFILE
+     if (_options.statusfilesave)
+@@ -5806,6 +6016,11 @@ int chilli_acct_fromsub(struct app_conn_
+ #endif
+ #endif
+ 
++    if (do_acct && IS_XWF_FULL_MODE(xwf_gi)) {
++      xwf_acct_pkt(xwf_gi, appconn, ipph, 1);
++      do_acct = 0;
++    }
++
+     if (do_acct) {
+ 
+       if (is_garden) {
+@@ -5929,6 +6144,11 @@ int chilli_acct_tosub(struct app_conn_t
+ #endif
+ #endif
+ 
++    if (do_acct && IS_XWF_FULL_MODE(xwf_gi)) {
++      xwf_acct_pkt(xwf_gi, appconn, ipph, 0);
++      do_acct = 0;
++    }
++
+     if (do_acct) {
+ 
+       if (is_garden) {
+@@ -6758,11 +6978,9 @@ int chilli_cmd(struct cmdsock_request *r
+ 
+         int crt = 0;
+ 
+-#ifdef ENABLE_JSON
+         if (listfmt == LIST_JSON_FMT) {
+           bcatcstr(s, "{ \"sessions\":[");
+         }
+-#endif
+ 
+         appconn = find_app_conn(req, &crt);
+         if (appconn) {
+@@ -6794,11 +7012,9 @@ int chilli_cmd(struct cmdsock_request *r
+ #endif
+         }
+ 
+-#ifdef ENABLE_JSON
+         if (listfmt == LIST_JSON_FMT) {
+           bcatcstr(s, "]}");
+         }
+-#endif
+       }
+       break;
+ 
+@@ -6809,21 +7025,17 @@ int chilli_cmd(struct cmdsock_request *r
+ 
+         struct dhcp_conn_t *conn;
+ 
+-#ifdef ENABLE_JSON
+         if (listfmt == LIST_JSON_FMT) {
+           bcatcstr(s, "{ \"sessions\":[");
+         }
+-#endif
+         conn = dhcp->firstusedconn;
+         while (conn) {
+           chilli_print(s, listfmt, 0, conn);
+           conn = conn->next;
+         }
+-#ifdef ENABLE_JSON
+         if (listfmt == LIST_JSON_FMT) {
+           bcatcstr(s, "]}");
+         }
+-#endif
+       }
+       break;
+ 
+@@ -6991,6 +7203,10 @@ int chilli_cmd(struct cmdsock_request *r
+       child_print(s);
+       break;
+ 
++    case CMDSOCK_XWFINFO:
++      xwf_getinfo(xwf_gi, s);
++      break;
++
+     default:
+       {
+         char unknown = 1;
+@@ -7182,7 +7398,7 @@ static int rtmon_accept(struct rtmon_t *
+ }
+ #endif
+ 
+-static inline void macauth_reserved() {
++static inline void macauth_reserved(void) {
+   struct dhcp_conn_t *conn = dhcp->firstusedconn;
+   struct app_conn_t *appconn;
+ 
+@@ -7198,7 +7414,7 @@ static inline void macauth_reserved() {
+ }
+ 
+ #ifdef ENABLE_LAYER3
+-static int session_timeout() {
++static int session_timeout(void) {
+   struct app_conn_t *conn = firstusedconn;
+ 
+   while (conn) {
+@@ -7413,18 +7629,21 @@ int chilli_main(int argc, char **argv) {
+       syslog(LOG_ERR, "%s: getting startup (realtime) time", strerror(errno));
+     }
+     if (_options.debug)
+-      syslog(LOG_DEBUG, "%s(%d): clock realtime sec %ld nsec %ld", __FUNCTION__, __LINE__, startup_real.tv_sec, startup_real.tv_nsec);
++      syslog(LOG_DEBUG, "%s(%d): clock realtime sec %lld nsec %ld", __FUNCTION__, __LINE__,
++	(long long int)startup_real.tv_sec, startup_real.tv_nsec);
+ #ifdef CLOCK_MONOTONIC
+     if (clock_gettime(CLOCK_MONOTONIC, &startup_mono) < 0) {
+       syslog(LOG_ERR, "%s: getting startup (monotonic) time", strerror(errno));
+     }
+     if (_options.debug)
+-      syslog(LOG_DEBUG, "%s(%d): clock monotonic sec %ld nsec %ld", __FUNCTION__, __LINE__, startup_mono.tv_sec, startup_mono.tv_nsec);
++      syslog(LOG_DEBUG, "%s(%d): clock monotonic sec %lld nsec %ld", __FUNCTION__, __LINE__,
++	(long long int)startup_mono.tv_sec, startup_mono.tv_nsec);
+ #endif
+ #endif
+ 
+     start_tick = mainclock_tick();
+ 
++
+     /* Create a tunnel interface */
+     if (tun_new(&tun)) {
+       syslog(LOG_ERR, "Failed to create tun");
+@@ -7495,9 +7714,11 @@ int chilli_main(int argc, char **argv) {
+     radius_set(radius, dhcp ? dhcp->rawif[0].hwaddr : 0,
+                (_options.debug & DEBUG_RADIUS));
+ 
+-    radius_set_cb_auth_conf(radius, cb_radius_auth_conf);
++    radius_set_cb_auth_conf(radius, _options.xwfmode ?
++			    cb_xwf_radius_auth_conf : cb_radius_auth_conf);
+ #ifdef ENABLE_COA
+-    radius_set_cb_coa_ind(radius, cb_radius_coa_ind);
++    radius_set_cb_coa_ind(radius, _options.xwfmode ?
++			  cb_xwf_radius_coa_ind : cb_radius_coa_ind);
+ #endif
+ #ifdef ENABLE_RADPROXY
+     radius_set_cb_ind(radius, cb_radius_ind);
+@@ -7611,7 +7832,8 @@ int chilli_main(int argc, char **argv) {
+ #ifdef ENABLE_UAMDOMAINFILE
+     garden_load_domainfile();
+ #endif
+-
++    syslog(LOG_ERR, "beffffff %s ",_options.xwfconfigfile);
++    xwf_gi = xwf_global_info_create(_options.xwfconfigfile);
+ #ifdef HAVE_PATRICIA
+     garden_patricia_reload();
+ #endif
+@@ -7782,6 +8004,10 @@ int chilli_main(int argc, char **argv) {
+       if (net_select_prepare(&sctx))
+         syslog(LOG_ERR, "%s: select prepare", strerror(errno));
+ 
++#ifdef ENABLE_XWF_SDN_OOB
++      xwfsw_select(xwf_gi);
++#endif
++
+       status = net_select(&sctx);
+ 
+       mainclock_tick();
+@@ -7856,6 +8082,8 @@ int chilli_main(int argc, char **argv) {
+     if (ippool)
+       ippool_free(ippool);
+ 
++    if (xwf_gi)
++      xwf_global_info_destroy(xwf_gi);
+     /*
+      *  Terminate not-so-nicely
+      */
+Index: coova-chilli-1.4/src/chilli.h
+===================================================================
+--- coova-chilli-1.4.orig/src/chilli.h
++++ coova-chilli-1.4/src/chilli.h
+@@ -202,8 +202,8 @@ struct chilli_peer {
+ #endif
+ 
+ #ifdef ENABLE_STATFILE
+-int printstatus();
+-int loadstatus();
++int printstatus(void);
++int loadstatus(void);
+ #endif
+ 
+ int chilli_connect(struct app_conn_t **appconn, struct dhcp_conn_t *conn);
+@@ -260,18 +260,26 @@ int dnprot_accept(struct app_conn_t *app
+ 
+ int dnprot_reject(struct app_conn_t *appconn);
+ 
++int dnprot_hold(struct app_conn_t *appconn);
++
++int dnprot_terminate(struct app_conn_t *appconn);
++
++#if defined(ENABLE_RADPROXY) || defined(ENABLE_EAPOL)
++int dnprot_challenge(struct app_conn_t *appconn);
++#endif
++
+ int get_urlparts(char *src, char *host, int hostsize, int *port, int *uripos);
+ 
+-int cmdsock_init();
++int cmdsock_init(void);
+ 
+-int cmdsock_port_init();
++int cmdsock_port_init(void);
+ 
+ void cmdsock_shutdown();
+ 
+-time_t mainclock_tick();
+-time_t mainclock_now();
+-time_t mainclock_rt();
+-time_t mainclock_wall();
++time_t mainclock_tick(void);
++time_t mainclock_now(void);
++time_t mainclock_rt(void);
++time_t mainclock_wall(void);
+ time_t mainclock_towall(time_t t);
+ int mainclock_diff(time_t past);
+ uint32_t mainclock_diffu(time_t past);
+@@ -296,8 +304,8 @@ int chilli_learn_location(uint8_t *loc,
+ #ifdef HAVE_NETFILTER_COOVA
+ int kmod_coova_update(struct app_conn_t *appconn);
+ int kmod_coova_release(struct dhcp_conn_t *conn);
+-int kmod_coova_sync();
+-int kmod_coova_clear();
++int kmod_coova_sync(void);
++int kmod_coova_clear(void);
+ #endif
+ 
+ #ifdef HAVE_OPENSSL
+@@ -325,7 +333,7 @@ uint8_t* chilli_called_station(struct se
+ int chilli_cmd(struct cmdsock_request *req, bstring s, int sock);
+ 
+ int chilli_handle_signal(void *ctx, int fd);
+-void chilli_freeconn();
++void chilli_freeconn(void);
+ 
+ int runscript(struct app_conn_t *appconn, char* script,
+ 	      char *loc, char *oloc);
+@@ -349,10 +357,10 @@ int selfpipe_init (void);
+ int selfpipe_read (void);
+ int selfpipe_trap (int signo);
+ int selfpipe_ignore (int signo);
+-void selfpipe_finish();
++void selfpipe_finish(void);
+ 
+ #ifdef ENABLE_LOCATION
+-void location_init();
++void location_init(void);
+ #ifdef HAVE_AVL
+ 
+ struct loc_search_t {
+@@ -389,5 +397,9 @@ void location_printlist(bstring s, char
+ 
+ #endif
+ #endif
++int upprot_getip(struct app_conn_t *appconn,
++		 struct in_addr *hisip,
++		 struct in_addr *hismask);
++int acct_req(acct_type type, struct app_conn_t *conn, uint8_t status_type);
+ 
+ #endif /*_CHILLI_H */
+Index: coova-chilli-1.4/src/cmdline.ggo
+===================================================================
+--- coova-chilli-1.4.orig/src/cmdline.ggo
++++ coova-chilli-1.4/src/cmdline.ggo
+@@ -6,10 +6,10 @@
+ # General Public License Version 2, provided that the above copyright
+ # notice and this permission notice is included in all copies or
+ # substantial portions of the software.
+-# 
++#
+ # The initial developer of the original code is
+ # Jens Jakobsen <jj@chillispot.org>
+-# 
++#
+ 
+ args "--no-handle-help --no-handle-version"
+ 
+@@ -97,7 +97,7 @@ option "radiuslocationname" - "WISPr Loc
+ option "locationname"       - "Location Name"                 string no
+ option "radiusnasporttype"  - "Radius NAS-Port-Type"          int default="19" no
+ option "coaport"            - "Radius disconnect port to listen to" int default="0" no
+-option "coanoipcheck"       - "Allow radius disconnect from any IP" flag   off
++option "coanoipcheck"       - "Allow radius disconnect from any IP" flag   on
+ option "noradallow"         - "Allow all sessions when RADIUS is not available" flag   off
+ 
+ 
+@@ -182,6 +182,11 @@ option "macallowlocal" - "Do not use RAD
+ option "strictmacauth" - "Be strict about MAC Auth (no DHCP reply until we get RADIUS reply)" flag off
+ option "strictdhcp"    - "Be strict about only allocating dyn-pool from DHCP" flag off
+ 
++# Facebook XWF
++option "xwfmode"     - "Work in XWF certified mode" flag   off
++option "xwfpiimode"     - "Work in XWF certified v3.0 PII mode for tokenized partners" flag   off
++option "xwfhiresintervalms"    - "Interval size (ms) to account user throughput over" int default="10" no
++
+ # "local" content
+ option "wwwdir"      - "Local content served by chilli (for splash page, etc)" string no
+ option "wwwbin"      - "Script binary (such as haserl) for simple web programming" string no
+@@ -267,6 +272,7 @@ option "uamuissl"  - "Enable SSL/HTTPS s
+ 
+ option "ipwhitelist" - "Binary IP White List file" string no
+ option "uamdomainfile" - "Load uamdomains (regex) from file" string no
++option "xwfconfigfile" - "Load xwf TC configuration from file" string no
+ 
+ option "layer3" - "Layer3 only" flag off
+ option "ipsrcallowed"  - "List of allowed source IP addresses, for Layer3" string no multiple
+@@ -274,7 +280,7 @@ option "patricia" - "Use patricia tries
+ option "redirdnsreq" - "Send DNS query on redirect to pick of DNS based walled garden" flag off
+ 
+ option "kname" - "Enable the use of the coova kernel module instance of this namem" string no
+-option "moddir"   - "Directory for dynamically loaded modules" string no 
++option "moddir"   - "Directory for dynamically loaded modules" string no
+ option "module"   - "Dynamically loaded module" string no multiple
+ 
+ option "dhcpopt" - "Set a DHCP option using a hex string" string no multiple
+@@ -283,15 +289,14 @@ option "extadmvsa" - "Extended administr
+ 
+ option "dhcpnotidle" - "DHCP counted for preventing idle-timeout" flag off
+ 
+-option "forcedns1"   - "Force all DNS to a specific address" string no 
+-option "forcedns1port"   - "Force all DNS to a specific port" int default="0" no 
++option "forcedns1"   - "Force all DNS to a specific address" string no
++option "forcedns1port"   - "Force all DNS to a specific port" int default="0" no
+ 
+-option "forcedns2"   - "Force all secondary DNS to a specific address" string no 
+-option "forcedns2port"   - "Force all secondary DNS to a specific port" int default="0" no 
++option "forcedns2"   - "Force all secondary DNS to a specific address" string no
++option "forcedns2port"   - "Force all secondary DNS to a specific port" int default="0" no
+ 
+ option "rfc7710uri" - "DHCP Captive Portal URI. Defaults to http://uamlisten:uamport/prelogin." string no
+ 
+ option "ipv6" - "Enable IPv6 support" flag off
+ option "ipv6mode" - "IPv6 mode is either 6and4 (default), 4to6, or 6to4" string no
+ option "ipv6only" - "Enable IPv6-Only" flag off
+-
+Index: coova-chilli-1.4/src/cmdsock.c
+===================================================================
+--- coova-chilli-1.4.orig/src/cmdsock.c
++++ coova-chilli-1.4/src/cmdsock.c
+@@ -20,7 +20,7 @@
+ #include "chilli.h"
+ 
+ int
+-cmdsock_init() {
++cmdsock_init(void) {
+   struct sockaddr_un local;
+   int cmdsock;
+ 
+@@ -61,7 +61,7 @@ cmdsock_init() {
+ 
+ 
+ int
+-cmdsock_port_init() {
++cmdsock_port_init(void) {
+   struct sockaddr_in local;
+   int cmdsock;
+   int rc;
+Index: coova-chilli-1.4/src/cmdsock.h
+===================================================================
+--- coova-chilli-1.4.orig/src/cmdsock.h
++++ coova-chilli-1.4/src/cmdsock.h
+@@ -55,6 +55,7 @@ typedef enum {
+   CMDSOCK_LISTLOC,
+   CMDSOCK_LISTLOCSUM,
+ #endif
++  CMDSOCK_XWFINFO,
+ } chilli_cmdtype;
+ #define  CMDSOCK_OPT_JSON      (1)
+ 
+Index: coova-chilli-1.4/src/dhcp.c
+===================================================================
+--- coova-chilli-1.4.orig/src/dhcp.c
++++ coova-chilli-1.4/src/dhcp.c
+@@ -30,6 +30,7 @@ static uint8_t nmac[PKT_ETH_ALEN] = {0x0
+ static int connections = 0;
+ 
+ extern struct ippool_t *ippool;
++extern struct xwf_global_info *xwf_gi;
+ 
+ struct dhcp_ctx {
+   struct dhcp_t *parent;
+@@ -1234,10 +1235,6 @@ int dhcp_new(struct dhcp_t **pdhcp, int
+   return 0;
+ }
+ 
+-int dhcp_reopen() {
+-  return 0;
+-}
+-
+ int dhcp_reserve_ip(uint8_t *mac, struct in_addr *ip) {
+   struct dhcp_conn_t *conn = 0;
+ 
+@@ -1246,6 +1243,10 @@ int dhcp_reserve_ip(uint8_t *mac, struct
+       syslog(LOG_ERR, "could not allocate connection");
+       return -1;
+     }
++#ifdef ENABLE_XWF_SDN_OOB
++  } else if (conn->authstate == DHCP_AUTH_TC_BASED){
++	  return -EEXIST;
++#endif
+   }
+ 
+   conn->is_reserved = 1;
+@@ -1691,10 +1692,11 @@ int dhcp_matchDNS(uint8_t *r, char *name
+  *   dhcp_dns() - Checks DNS for bad packets or locally handled DNS.
+  *   returns: 0 = do not forward, 1 = forward DNS
+  */
++#ifndef ENABLE_XWF_SDN_OOB
+ static
++#endif
+ int dhcp_dns(struct dhcp_conn_t *conn, uint8_t *pack,
+ 	     size_t *plen, char isReq) {
+-
+   if (*plen < DHCP_DNS_HLEN + sizeofudp(pack)) {
+ 
+     if (_options.debug)
+@@ -1724,6 +1726,8 @@ int dhcp_dns(struct dhcp_conn_t *conn, u
+     uint8_t *an_mark = 0;
+ #endif
+ 
++    int tc_arr[XWF_MAX_TC_NUM] = {0};
++    int tc_match = -1;
+     int mode = 0;
+     int qmatch = -1;
+     int mod = -1;
+@@ -1809,7 +1813,8 @@ int dhcp_dns(struct dhcp_conn_t *conn, u
+       if (dns_copy_res(conn, isq, &dptr, &dlen,                 \
+ 		       (uint8_t *)dnsp, olen,                   \
+ 		       q, sizeof(q), isReq,                     \
+-		       &qmatch, &mod, mode)) {                  \
++		       &qmatch, &tc_match,                      \
++		       tc_arr, &mod, mode)) {                   \
+         syslog(LOG_WARNING, "dropping malformed DNS");		\
+ 	return isReq ? dhcp_nakDNS(conn,pack,*plen) : 0;        \
+       }                                                         \
+@@ -2029,8 +2034,15 @@ int dhcp_dns(struct dhcp_conn_t *conn, u
+ 	/* Calculate total length */
+ 	length = udp_len + sizeofip(answer);
+ 
+-	OTHER_SENDING(conn, answer_iph);
+-	dhcp_send(dhcp, dhcp_conn_idx(conn), conn->hismac, answer, length);
++#ifdef ENABLE_XWF_SDN_OOB
++	if (conn) {
++		OTHER_SENDING(conn, answer_iph);
++		dhcp_send(dhcp, dhcp_conn_idx(conn), conn->hismac, answer, length);
++	}
++#else
++        OTHER_SENDING(conn, answer_iph);
++        dhcp_send(dhcp, dhcp_conn_idx(conn), conn->hismac, answer, length);
++#endif
+ 	return 0;
+       }
+     }
+@@ -2263,7 +2275,7 @@ int dhcp_uam_unnat(struct dhcp_conn_t *c
+ static
+ int dhcp_dnsDNAT(struct dhcp_conn_t *conn,
+ 		 uint8_t *pack, size_t *len,
+-		 char *do_checksum) {
++		 char *do_checksum, int xwf_tc) {
+ 
+   struct dhcp_t *this = conn->parent;
+   struct pkt_iphdr_t  *iph  = pkt_iphdr(pack);
+@@ -3722,13 +3734,17 @@ int dhcp_receive_ip(struct dhcp_ctx *ctx
+   struct in_addr ourip;
+   struct in_addr addr;
+ 
++#ifdef DOCKER_ENV
++  char do_checksum = 1;
++#else
+   char do_checksum = 0;
++#endif
+   char allowed = 0;
+   char has_ip = 0;
+   char is_dhcp = 0;
+ 
+   int authstate = 0;
+-
++  int xwf_tc_idx = -1;
+   struct app_conn_t *appconn = 0;
+ 
+   uint16_t iph_tot_len;
+@@ -4023,6 +4039,7 @@ int dhcp_receive_ip(struct dhcp_ctx *ctx
+ 
+     default:
+       has_ip = conn->hisip.s_addr != 0;
++      //TODO : take authstate of xwf_authstate[tc_idx]
+       authstate = conn->authstate;
+       break;
+   }
+@@ -4141,7 +4158,16 @@ int dhcp_receive_ip(struct dhcp_ctx *ctx
+ 		 this->uamport);
+   }
+ 
+-  switch (dhcp_dnsDNAT(conn, pack, &len, &do_checksum)) {
++  if (IS_XWF_FULL_MODE(xwf_gi)) {
++    if (!appconn)
++      appconn = dhcp_get_appconn_pkt(conn, pack_iph, 0);
++    xwf_tc_idx = xwf_get_authorized_tc(xwf_gi,
++				       &appconn->s_state.xwf_s,
++				       pack_iph,
++				       1);
++  }
++
++  switch (dhcp_dnsDNAT(conn, pack, &len, &do_checksum, xwf_tc_idx)) {
+     case 0:  /* Not DNS */ break;
+     case 1:  /* Allowed DNS */ allowed = 1; break;
+     default: /* Drop */
+@@ -4156,6 +4182,14 @@ int dhcp_receive_ip(struct dhcp_ctx *ctx
+     app_conn_set_idx(appconn, conn);
+ #endif
+ 
++  /* Check if its tc based authstate */
++  if (authstate == DHCP_AUTH_TC_BASED) {
++    if (xwf_tc_idx >= 0)
++      authstate = DHCP_AUTH_PASS;
++    else
++      authstate = DHCP_AUTH_DNAT;
++  }
++
+   switch (authstate) {
+ 
+     case DHCP_AUTH_PASS:
+@@ -5608,6 +5642,7 @@ int dhcp_relay_decaps(struct dhcp_t *thi
+ int dhcp_data_req(struct dhcp_conn_t *conn,
+ 		  struct pkt_buffer *pb, int ethhdr) {
+   struct dhcp_t *this = conn->parent;
++  struct app_conn_t *appconn = 0;
+ 
+   uint8_t *packet = pkt_buffer_head(pb);
+   size_t length = pkt_buffer_length(pb);
+@@ -5620,6 +5655,7 @@ int dhcp_data_req(struct dhcp_conn_t *co
+   char allowed = 0;
+ 
+   int authstate = 0;
++  int xwf_tc_idx = -1;
+ 
+   if (ethhdr) {
+     /*
+@@ -5699,6 +5735,23 @@ int dhcp_data_req(struct dhcp_conn_t *co
+     default: /* Drop */ return 0;
+   }
+ 
++  if (IS_XWF_FULL_MODE(xwf_gi)) {
++    if (!appconn)
++      appconn = dhcp_get_appconn_pkt(conn, pkt_iphdr(packet), 0);
++    xwf_tc_idx = xwf_get_authorized_tc(xwf_gi,
++				       &appconn->s_state.xwf_s,
++				       pkt_iphdr(packet),
++				       0);
++  }
++
++  /* Check if its tc based authstate */
++  if (authstate == DHCP_AUTH_TC_BASED) {
++    if (xwf_tc_idx >= 0)
++      authstate = DHCP_AUTH_PASS;
++    else
++      authstate = DHCP_AUTH_DNAT;
++  }
++
+   switch (authstate) {
+ 
+     case DHCP_AUTH_PASS:
+@@ -5712,6 +5765,7 @@ int dhcp_data_req(struct dhcp_conn_t *co
+       break;
+ 
+     case DHCP_AUTH_DNAT:
++    case DHCP_AUTH_TC_BASED:
+     case DHCP_AUTH_NONE:
+       /* undo destination NAT */
+       if (dhcp_undoDNAT(conn, packet, &length, 1, &do_checksum) && !allowed) {
+Index: coova-chilli-1.4/src/dhcp.h
+===================================================================
+--- coova-chilli-1.4.orig/src/dhcp.h
++++ coova-chilli-1.4/src/dhcp.h
+@@ -102,6 +102,7 @@ struct dhcp_t; /* Forward declaration */
+ #ifdef ENABLE_LAYER3
+ #define DHCP_AUTH_ROUTER      7
+ #endif
++#define DHCP_AUTH_TC_BASED    8
+ 
+ #define DHCP_DOMAIN_LEN      30
+ 
+@@ -369,6 +370,10 @@ struct chilli_peer;
+ struct chilli_peer * get_chilli_peer(int id);
+ #endif
+ 
++#ifdef ENABLE_XWF_SDN_OOB
++int dhcp_dns(struct dhcp_conn_t *conn, uint8_t *pack,
++	     size_t *plen, char isReq);
++#endif
+ struct app_conn_t * dhcp_get_appconn_ip
+ (struct dhcp_conn_t *conn, struct in_addr *dst);
+ 
+@@ -384,6 +389,9 @@ int dhcp_garden_check_auth(struct dhcp_t
+ 			   struct app_conn_t *appconn,
+ 			   struct pkt_ipphdr_t *ipph, int dst);
+ 
++#ifdef ENABLE_XWF_SDN_OOB
++int dhcp_reserve_ip(uint8_t *mac, struct in_addr *ip);
++#endif
+ #define CHILLI_DHCP_OFFER    1
+ #define CHILLI_DHCP_ACK      2
+ #define CHILLI_DHCP_NAK      3
+Index: coova-chilli-1.4/src/dns.c
+===================================================================
+--- coova-chilli-1.4.orig/src/dns.c
++++ coova-chilli-1.4/src/dns.c
+@@ -22,6 +22,7 @@
+ #define antidnstunnel _options.dnsparanoia
+ 
+ extern struct dhcp_t *dhcp;
++extern struct xwf_global_info *xwf_gi;
+ 
+ ssize_t
+ dns_fullname(char *data, size_t dlen,      /* buffer to store name */
+@@ -133,10 +134,13 @@ dns_copy_res(struct dhcp_conn_t *conn, i
+ 	     uint8_t **pktp, size_t *left,
+ 	     uint8_t *opkt,  size_t olen,
+ 	     uint8_t *question, size_t qsize,
+-	     int isReq, int *qmatch, int *modified, int mode) {
++	     int isReq, int *qmatch,
++	     int *tc_match, int *tc_arr,
++	     int *modified, int mode) {
+ 
+ #define return_error {                                                  \
+     if (_options.debug) syslog(LOG_DEBUG, "%s(%d): failed parsing DNS packet", __FUNCTION__, __LINE__); return -1; }
++  int tc = 0;
+ 
+   uint8_t *p_pkt = *pktp;
+   size_t len = *left;
+@@ -252,6 +256,15 @@ dns_copy_res(struct dhcp_conn_t *conn, i
+       }
+     }
+ 
++    if (!isReq && (*tc_match == -1)) {
++      xwf_dns_q_match(xwf_gi, (char *)question, tc_arr);
++      for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++        if (!tc_arr[tc])
++          continue;
++        *tc_match = 1;
++      }
++    }
++
+ #ifdef ENABLE_UAMDOMAINFILE
+     if (!isReq && *qmatch == -1 && _options.uamdomainfile) {
+       *qmatch = garden_check_domainfile((char *) question);
+@@ -353,6 +366,17 @@ dns_copy_res(struct dhcp_conn_t *conn, i
+           add_A_to_garden(p_pkt+offset);
+         }
+       }
++
++      if (*tc_match == 1) {
++        for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++          size_t offset;
++          if (!tc_arr[tc])
++            continue;
++          for (offset=0; offset < rdlen; offset += 4) {
++            xwf_add_A_record_to_tc(xwf_gi, tc, p_pkt+offset);
++          }
++        }
++      }
+       break;
+ 
+     case 2: 
+Index: coova-chilli-1.4/src/dns.h
+===================================================================
+--- coova-chilli-1.4.orig/src/dns.h
++++ coova-chilli-1.4/src/dns.h
+@@ -40,6 +40,8 @@ dns_copy_res(struct dhcp_conn_t *conn, i
+ 	     uint8_t **pktp, size_t *left,
+ 	     uint8_t *opkt, size_t olen,
+ 	     uint8_t *question, size_t qsize,
+-	     int isReq, int *qmatch, int *modified, int mode);
++	     int isReq, int *qmatch,
++	     int *tc_match, int *tc_arr,
++	     int *modified, int mode);
+ 
+ #endif
+Index: coova-chilli-1.4/src/garden.c
+===================================================================
+--- coova-chilli-1.4.orig/src/garden.c
++++ coova-chilli-1.4/src/garden.c
+@@ -320,7 +320,7 @@ void garden_patricia_load_list(patricia_
+     garden_patricia_add(&ptlist[i], ptree);
+ }
+ 
+-void garden_patricia_reload() {
++void garden_patricia_reload(void) {
+   if (_options.patricia) {
+     garden_patricia_load_list(&dhcp->ptree,
+ 			      _options.pass_throughs,
+@@ -649,7 +649,7 @@ typedef struct uamdomain_regex_t {
+ 
+ static uamdomain_regex * _list_head = 0;
+ 
+-void garden_free_domainfile() {
++void garden_free_domainfile(void) {
+   while (_list_head) {
+     uamdomain_regex * n = _list_head;
+     _list_head = _list_head->next;
+@@ -658,7 +658,7 @@ void garden_free_domainfile() {
+   }
+ }
+ 
+-void garden_load_domainfile() {
++void garden_load_domainfile(void) {
+   garden_free_domainfile();
+   if (!_options.uamdomainfile) return;
+   else {
+Index: coova-chilli-1.4/src/garden.h
+===================================================================
+--- coova-chilli-1.4.orig/src/garden.h
++++ coova-chilli-1.4/src/garden.h
+@@ -102,12 +102,12 @@ int garden_patricia_check(patricia_tree_
+ void garden_patricia_load_list(patricia_tree_t **pptree,
+ 			       pass_through *ptlist,
+ 			       uint32_t ptcnt);
+-void garden_patricia_reload();
++void garden_patricia_reload(void);
+ #endif
+ 
+ #ifdef ENABLE_UAMDOMAINFILE
+-void garden_load_domainfile();
+-void garden_free_domainfile();
++void garden_load_domainfile(void);
++void garden_free_domainfile(void);
+ int  garden_check_domainfile(char *question);
+ #endif
+ 
+Index: coova-chilli-1.4/src/ippool.c
+===================================================================
+--- coova-chilli-1.4.orig/src/ippool.c
++++ coova-chilli-1.4/src/ippool.c
+@@ -35,7 +35,6 @@ int ippool_print(int fd, struct ippool_t
+   char * sep = "-- %-15s ------------------------------------------------------------\n";
+ 
+ #define ERR 0
+-#undef USED /* defined in <wolfssl/wolfcrypt/integer.h> */
+ #define USED 1
+ #define FREE 2
+ #define LIST 3
+@@ -445,10 +444,17 @@ int ippool_getip(struct ippool_t *this,
+  * dynamic address space allocate it there, otherwise allocate within static
+  * address space.
+  **/
++#ifdef ENABLE_XWF_SDN_OOB
+ int ippool_newip(struct ippool_t *this,
+ 		 struct ippoolm_t **member,
+ 		 struct in_addr *addr,
+-		 int statip) {
++		 int statip, uint8_t is_reserved) {
++#else
++int ippool_newip(struct ippool_t *this,
++                 struct ippoolm_t **member,
++                 struct in_addr *addr,
++                 int statip) {
++#endif
+   struct ippoolm_t *p = NULL;
+   struct ippoolm_t *p2 = NULL;
+   uint32_t hash;
+@@ -478,11 +484,19 @@ int ippool_newip(struct ippool_t *this,
+ #ifdef ENABLE_UAMANYIP
+     if (!_options.uamanyip) {
+ #endif
++#ifdef ENABLE_XWF_SDN_OOB
++      if (!is_reserved && !this->allowstat) {
++#else
+       if (!this->allowstat) {
++#endif
+ 	syslog(LOG_DEBUG, "Static IP address not allowed");
+ 	return -1;
+       }
++#ifdef ENABLE_XWF_SDN_OOB
++      if (!is_reserved && (addr->s_addr & this->statmask.s_addr) != this->stataddr.s_addr) {
++#else
+       if ((addr->s_addr & this->statmask.s_addr) != this->stataddr.s_addr) {
++#endif
+ 	syslog(LOG_ERR, "Static out of range (%s)", inet_ntoa(*addr));
+ 	return -1;
+       }
+@@ -491,7 +505,11 @@ int ippool_newip(struct ippool_t *this,
+ #endif
+   }
+   else {
++#ifdef ENABLE_XWF_SDN_OOB
++    if (!is_reserved && !this->allowdyn) {
++#else
+     if (!this->allowdyn) {
++#endif
+       syslog(LOG_ERR, "Dynamic IP address not allowed");
+       return -1;
+     }
+Index: coova-chilli-1.4/src/ippool.h
+===================================================================
+--- coova-chilli-1.4.orig/src/ippool.h
++++ coova-chilli-1.4/src/ippool.h
+@@ -96,8 +96,13 @@ extern int ippool_getip(struct ippool_t
+ 
+ /* Get an IP address. If addr = 0.0.0.0 get a dynamic IP address. Otherwise
+    check to see if the given address is available */
++#ifdef ENABLE_XWF_SDN_OOB
+ extern int ippool_newip(struct ippool_t *this, struct ippoolm_t **member,
+-			struct in_addr *addr, int statip);
++			struct in_addr *addr, int statip, uint8_t is_reserved);
++#else
++extern int ippool_newip(struct ippool_t *this, struct ippoolm_t **member,
++                        struct in_addr *addr, int statip);
++#endif
+ 
+ /* Return a previously allocated IP address */
+ extern int ippool_freeip(struct ippool_t *this, struct ippoolm_t *member);
+Index: coova-chilli-1.4/src/kcoova.c
+===================================================================
+--- coova-chilli-1.4.orig/src/kcoova.c
++++ coova-chilli-1.4/src/kcoova.c
+@@ -58,12 +58,12 @@ kmod_coova_release(struct dhcp_conn_t *c
+ }
+ 
+ int
+-kmod_coova_clear() {
++kmod_coova_clear(void) {
+   return kmod('/', 0);
+ }
+ 
+ int
+-kmod_coova_sync() {
++kmod_coova_sync(void) {
+   char file[128];
+   char * line = 0;
+   size_t len = 0;
+Index: coova-chilli-1.4/src/linux/Makefile
+===================================================================
+--- coova-chilli-1.4.orig/src/linux/Makefile
++++ coova-chilli-1.4/src/linux/Makefile
+@@ -25,8 +25,8 @@ lib%.o: lib%.c
+ 	$(CC) $(CFLAGS) -fPIC -O2 -Wall -D_INIT=lib$*_init -c -o $@ $<;
+ 
+ install: modules_install libxt_coova.so
+-	mkdir -p $(DESTDIR)/usr/lib/iptables/
+-	cp libxt_coova.so $(DESTDIR)/usr/lib/iptables/
++	mkdir -p $(DESTDIR)/lib/xtables/
++	cp libxt_coova.so $(DESTDIR)/lib/xtables/
+ 
+ distdir:
+ 
+Index: coova-chilli-1.4/src/location.c
+===================================================================
+--- coova-chilli-1.4.orig/src/location.c
++++ coova-chilli-1.4/src/location.c
+@@ -509,7 +509,7 @@ void location_printlist(bstring s, char
+ 
+ #endif
+ 
+-void location_init() {
++void location_init(void) {
+ #ifdef HAVE_AVL
+   struct app_conn_t *conn = firstusedconn;
+   memset(&loc_search_tree, 0, sizeof(loc_search_tree));
+Index: coova-chilli-1.4/src/main-opt.c
+===================================================================
+--- coova-chilli-1.4.orig/src/main-opt.c
++++ coova-chilli-1.4/src/main-opt.c
+@@ -80,7 +80,7 @@ static const char *compile_options = "Co
+ #endif
+ #ifdef ENABLE_CHILLISCRIPT
+     "ENABLE_CHILLISCRIPT "
+-#endif 
++#endif
+ #ifdef ENABLE_CHILLIXML
+     "ENABLE_CHILLIXML "
+ #endif
+@@ -417,6 +417,9 @@ int main(int argc, char **argv) {
+   _options.macauth = args_info.macauth_flag;
+   _options.macreauth = args_info.macreauth_flag;
+   _options.macauthdeny = args_info.macauthdeny_flag;
++  _options.xwfmode = args_info.xwfmode_flag;
++  _options.xwfpiimode = args_info.xwfpiimode_flag;
++  _options.xwfhiresintervalms = args_info.xwfhiresintervalms_arg;
+   _options.uamport = args_info.uamport_arg;
+ #ifdef ENABLE_UAMUIPORT
+   _options.uamuiport = args_info.uamuiport_arg;
+@@ -1285,6 +1288,8 @@ int main(int argc, char **argv) {
+     syslog(LOG_ERR, "option uamdomainfile given when no support built-in");
+ #endif
+ 
++  _options.xwfconfigfile = STRDUP(args_info.xwfconfigfile_arg);
++
+ #ifdef ENABLE_MODULES
+   _options.moddir = STRDUP(args_info.moddir_arg);
+ #else
+@@ -1435,4 +1440,3 @@ end_processing:
+ 
+   return ret;
+ }
+-
+Index: coova-chilli-1.4/src/main-proxy.c
+===================================================================
+--- coova-chilli-1.4.orig/src/main-proxy.c
++++ coova-chilli-1.4/src/main-proxy.c
+@@ -87,7 +87,7 @@ static int still_running = 0;
+ 
+ static char nas_hwaddr[PKT_ETH_ALEN];
+ 
+-static void print_requests() {
++static void print_requests(void) {
+   proxy_request * req = 0;
+   int i;
+ 
+Index: coova-chilli-1.4/src/main-query.c
+===================================================================
+--- coova-chilli-1.4.orig/src/main-query.c
++++ coova-chilli-1.4/src/main-query.c
+@@ -71,6 +71,7 @@ static cmd_info commands[] = {
+   { CMDSOCK_LISTLOC,       "listloc",       NULL },
+   { CMDSOCK_LISTLOCSUM,    "listlocsum",    NULL },
+ #endif
++  { CMDSOCK_XWFINFO,       "xwfinfo",       NULL },
+   { 0, NULL, NULL }
+ };
+ 
+Index: coova-chilli-1.4/src/md5.h
+===================================================================
+--- coova-chilli-1.4.orig/src/md5.h
++++ coova-chilli-1.4/src/md5.h
+@@ -35,6 +35,7 @@
+ #define MD5Update MD5_Update
+ #define MD5Final MD5_Final
+ 
++typedef struct CYASSL_MD5_CTX MD5_CTX;
+ #else
+ 
+ struct MD5Context {
+Index: coova-chilli-1.4/src/net.c
+===================================================================
+--- coova-chilli-1.4.orig/src/net.c
++++ coova-chilli-1.4/src/net.c
+@@ -1082,9 +1082,6 @@ int net_route(struct in_addr *dst, struc
+   close(fd);
+   return 0;
+ 
+-#elif defined(__sun__)
+-  syslog(LOG_ERR, "%s: Could not set up routing on Solaris. Please add route manually.", strerror(errno));
+-  return 0;
+ #else
+ #error  "Unknown platform!"
+ #endif
+@@ -1263,11 +1260,6 @@ int net_open_eth(net_interface *netif) {
+     ndelay_on(netif->fd);
+     coe(netif->fd);
+ 
+-    option = 1;
+-    if (net_setsockopt(netif->fd, SOL_SOCKET, TCP_NODELAY,
+-		       &option, sizeof(option)) < 0)
+-      return -1;
+-
+     /* Enable reception and transmission of broadcast frames */
+     option = 1;
+     if (net_setsockopt(netif->fd, SOL_SOCKET, SO_BROADCAST,
+Index: coova-chilli-1.4/src/options.c
+===================================================================
+--- coova-chilli-1.4.orig/src/options.c
++++ coova-chilli-1.4/src/options.c
+@@ -23,7 +23,7 @@
+ #include "chilli_module.h"
+ #endif
+ 
+-void options_init() {
++void options_init(void) {
+   memset(&_options, 0, sizeof(_options));
+ }
+ 
+@@ -343,6 +343,7 @@ int options_fromfd(int fd, bstring bt) {
+ #ifdef ENABLE_UAMDOMAINFILE
+   if (!option_s_l(bt, &o.uamdomainfile)) return 0;
+ #endif
++  if (!option_s_l(bt, &o.xwfconfigfile)) return 0;
+ #ifdef ENABLE_MODULES
+   if (!option_s_l(bt, &o.moddir)) return 0;
+ #endif
+@@ -543,6 +544,7 @@ int options_save(char *file, bstring bt)
+ #ifdef ENABLE_UAMDOMAINFILE
+   if (!option_s_s(bt, &o.uamdomainfile)) return 0;
+ #endif
++  if (!option_s_s(bt, &o.xwfconfigfile)) return 0;
+ #ifdef ENABLE_MODULES
+   if (!option_s_s(bt, &o.moddir)) return 0;
+ #endif
+@@ -666,12 +668,12 @@ int reload_options(int argc, char **argv
+   return ok;
+ }
+ 
+-void options_destroy() {
++void options_destroy(void) {
+   if (_options._data)
+     free(_options._data);
+ }
+ 
+-void options_cleanup() {
++void options_cleanup(void) {
+   char file[128];
+ 
+ #ifdef ENABLE_MODULES
+Index: coova-chilli-1.4/src/options.h
+===================================================================
+--- coova-chilli-1.4.orig/src/options.h
++++ coova-chilli-1.4/src/options.h
+@@ -176,6 +176,8 @@ struct options_t {
+   int dhcphashsize;              /* DHCP MAC Hash table size */
+   int radiusqsize;               /* Size of RADIUS queue, 0 for default */
+ 
++  int xwfhiresintervalms;        /* interval size (ms) to account user throughput over */
++
+   struct in_addr uamlogout;      /* IP address of HTTP auto-logout */
+   struct in_addr uamalias;       /* IP address of UAM Alias */
+   char *uamaliasname;            /* Simple hostname (no dots) DNS name for uamalias */
+@@ -233,6 +235,8 @@ struct options_t {
+   uint8_t domaindnslocal:1;         /* Wildcard option to consider all hostnames *.domain local */
+   uint8_t radsec:1;                 /* Use RadSec tunneling */
+   uint8_t noradallow:1;             /* Authorize all sessions when RADIUS is not available */
++  uint8_t xwfmode:1;                /* XWF certified mode */
++  uint8_t xwfpiimode:1;             /* XWF certified v3.0 PII mode */
+   uint8_t redirdnsreq:1;
+   uint8_t routeonetone:1;
+   uint8_t statusfilesave:1;
+@@ -390,6 +394,9 @@ struct options_t {
+   char *uamdomainfile;
+ #endif
+ 
++  /* XWF Full config file */
++  char *xwfconfigfile;
++
+   /* Command-Socket */
+   char *cmdsocket;
+   uint16_t cmdsocketport;
+@@ -437,9 +444,9 @@ int process_options(int argc, char **arg
+ void reprocess_options(int argc, char **argv);
+ int reload_options(int argc, char **argv);
+ int options_save(char *file, bstring bt);
+-void options_init();
+-void options_destroy();
+-void options_cleanup();
++void options_init(void);
++void options_destroy(void);
++void options_cleanup(void);
+ 
+ #ifndef MAIN_FILE /* all main() files must implement _options */
+ extern struct options_t _options;
+Index: coova-chilli-1.4/src/pkt.h
+===================================================================
+--- coova-chilli-1.4.orig/src/pkt.h
++++ coova-chilli-1.4/src/pkt.h
+@@ -560,7 +560,7 @@ struct pkt_buffer {
+ #define pkt_buffer_is_eth(pb)  ((pb)->offset == PKT_BUFFER_ETHOFF)
+ #define pkt_buffer_is_vlan(pb) ((pb)->offset == PKT_BUFFER_VLANOFF)
+ 
+-#define MAC_FMT "%.2X-%.2X-%.2X-%.2X-%.2X-%.2X"
++#define MAC_FMT "%02x:%02x:%02x:%02x:%02x:%02x"
+ #define MAC_ARG(x) (x)[0],(x)[1],(x)[2],(x)[3],(x)[4],(x)[5]
+ 
+ #endif
+Index: coova-chilli-1.4/src/queue.c
+===================================================================
+--- coova-chilli-1.4.orig/src/queue.c
++++ coova-chilli-1.4/src/queue.c
+@@ -57,7 +57,7 @@ static  struct nfq_q_handle *qh;
+ /*static  struct nfnl_handle *nh;*/
+ static  int fd;
+ 
+-int q_setup() {
++int q_setup(void) {
+   printf("opening library handle\n");
+   h = nfq_open();
+   if (!h) {
+Index: coova-chilli-1.4/src/radius.c
+===================================================================
+--- coova-chilli-1.4.orig/src/radius.c
++++ coova-chilli-1.4/src/radius.c
+@@ -43,6 +43,9 @@ void radius_addnasip(struct radius_t *ra
+   if (!paddr && _options.radiuslisten.s_addr != 0)
+     paddr = &_options.radiuslisten;
+ 
++  if (!paddr && radius->auto_nasip.s_addr != 0)
++    paddr = &radius->auto_nasip;
++
+   if (!paddr)
+     paddr = &_options.uamlisten;
+ 
+@@ -1236,6 +1239,33 @@ int radius_pwencode(struct radius_t *thi
+   return 0;
+ }
+ 
++static int radius_get_autonasip(struct in_addr *nasip) {
++  struct ifaddrs *ifaddr, *ifa;
++  struct in_addr netmask;
++  struct in_addr ifipaddr;
++
++  if (getifaddrs (&ifaddr) == -1 || !nasip) {
++    return -EINVAL;
++  }
++
++  for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
++    if ((ifa->ifa_addr == NULL) || (ifa->ifa_addr->sa_family != AF_INET))
++      continue;
++
++    netmask = (((struct sockaddr_in*) ifa->ifa_netmask)->sin_addr);
++    ifipaddr = (((struct sockaddr_in*) ifa->ifa_addr)->sin_addr);
++    if ((_options.radiusserver1.s_addr & netmask.s_addr) ==
++	(ifipaddr.s_addr & netmask.s_addr)) {
++      *nasip = ifipaddr;
++      freeifaddrs (ifaddr);
++      return 0;
++    }
++  }
++
++  freeifaddrs (ifaddr);
++  return -ENOENT;
++}
++
+ 
+ /*
+  * radius_new()
+@@ -1260,6 +1290,8 @@ int radius_new(struct radius_t **this,
+   new_radius->ouraddr.s_addr = listen->s_addr;
+   new_radius->ourport = port;
+ 
++  radius_get_autonasip(&new_radius->auto_nasip);
++
+ #ifdef ENABLE_RADPROXY
+   if (proxy) {  /* Proxy parameters */
+     if (_options.proxyport && _options.proxysecret) {
+@@ -1667,27 +1699,30 @@ radius_default_pack(struct radius_t *thi
+     case RADIUS_CODE_ACCESS_REQUEST:
+     case RADIUS_CODE_ACCOUNTING_REQUEST:
+ 
+-      radius_addattr(this, pack, RADIUS_ATTR_VENDOR_SPECIFIC,
+-                     RADIUS_VENDOR_COOVACHILLI,
+-                     RADIUS_ATTR_COOVACHILLI_VERSION,
+-                     0, (uint8_t*)VERSION, strlen(VERSION));
++      if (!_options.xwfmode)
++        radius_addattr(this, pack, RADIUS_ATTR_VENDOR_SPECIFIC,
++		       RADIUS_VENDOR_COOVACHILLI,
++		       RADIUS_ATTR_COOVACHILLI_VERSION,
++		       0, (uint8_t*)VERSION, strlen(VERSION));
+ 
+       if (code == RADIUS_CODE_ACCOUNTING_REQUEST) {
+ 
+-        /*
+-         * For accounting, always indicate the "direction" of accounting
+-         * up / down data measurements.
+-         */
+-
+-        uint32_t v = _options.swapoctets ?
+-            RADIUS_VALUE_COOVACHILLI_NAS_VIEWPOINT :
+-            RADIUS_VALUE_COOVACHILLI_CLIENT_VIEWPOINT;
+-
+-        radius_addattr(this, pack,
+-                       RADIUS_ATTR_VENDOR_SPECIFIC,
+-                       RADIUS_VENDOR_COOVACHILLI,
+-                       RADIUS_ATTR_COOVACHILLI_ACCT_VIEW_POINT,
+-                       v, 0, 0);
++        if (!_options.xwfmode) {
++          /*
++           * For accounting, always indicate the "direction" of accounting
++           * up / down data measurements.
++           */
++
++          uint32_t v = _options.swapoctets ?
++              RADIUS_VALUE_COOVACHILLI_NAS_VIEWPOINT :
++	      RADIUS_VALUE_COOVACHILLI_CLIENT_VIEWPOINT;
++
++          radius_addattr(this, pack,
++			 RADIUS_ATTR_VENDOR_SPECIFIC,
++			 RADIUS_VENDOR_COOVACHILLI,
++			 RADIUS_ATTR_COOVACHILLI_ACCT_VIEW_POINT,
++			 v, 0, 0);
++	}
+ 
+         radius_addattr(this, pack, RADIUS_ATTR_EVENT_TIMESTAMP, 0, 0,
+                        mainclock_wall(), NULL, 0);
+Index: coova-chilli-1.4/src/radius.h
+===================================================================
+--- coova-chilli-1.4.orig/src/radius.h
++++ coova-chilli-1.4/src/radius.h
+@@ -178,6 +178,7 @@
+ #include "radius_pkt.h"
+ #include "radius_wispr.h"
+ #include "radius_coovachilli.h"
++#include "radius_xwf.h"
+ 
+ struct radius_queue_t {      /* Holder for queued packets */
+   int state;                 /* 0=empty, 1=full */
+@@ -245,6 +246,7 @@ struct radius_t {
+   size_t proxysecretlen;            /* Length of sharet secret */
+ #endif
+ 
++  struct in_addr auto_nasip;
+   unsigned char nas_hwaddr[6];   /* Hardware address of NAS */
+   int debug;                     /* Print debug messages */
+ 
+Index: coova-chilli-1.4/src/redir.c
+===================================================================
+--- coova-chilli-1.4.orig/src/redir.c
++++ coova-chilli-1.4/src/redir.c
+@@ -3358,17 +3358,15 @@ int redir_main(struct redir_t *redir,
+   }
+ 
+ #define redir_memcopy(msgtype)                                          \
+-  do {                                                                  \
+   redir_challenge(challenge);                                           \
+   redir_chartohex(challenge, hexchal, REDIR_MD5LEN);                    \
+   msg.mtype = msgtype;                                                  \
+   memcpy(conn.s_state.redir.uamchal, challenge, REDIR_MD5LEN);          \
+-  if (_options.debug) syslog(LOG_DEBUG, "%s(%d): ---->>> resetting challenge: %s", __FUNCTION__, __LINE__, hexchal); \
+-  } while (0)
++  if (_options.debug)							\
++    syslog(LOG_DEBUG, "%s(%d): ---->>> resetting challenge: %s", __FUNCTION__, __LINE__, hexchal)
+ 
+ #ifdef USING_IPC_UNIX
+ #define redir_msg_send(msgopt)                                          \
+-  do {                                                                  \
+   msg.mdata.opt = msgopt;                                               \
+   memcpy(&msg.mdata.address, address, sizeof(msg.mdata.address));       \
+   memcpy(&msg.mdata.baddress, baddress, sizeof(msg.mdata.baddress));    \
+@@ -3378,11 +3376,9 @@ int redir_main(struct redir_t *redir,
+     syslog(LOG_ERR, "%s: write() failed! msgfd=%d type=%ld len=%d",     \
+            strerror(errno), redir->msgfd, msg.mtype, (int)sizeof(msg.mdata)); \
+     return redir_main_exit(&socket, forked, rreq);                      \
+-  }                                                                     \
+-  } while (0)
++  }
+ #else
+ #define redir_msg_send(msgopt)                                          \
+-  do {                                                                  \
+   msg.mdata.opt = msgopt;                                               \
+   memcpy(&msg.mdata.address, address, sizeof(msg.mdata.address));       \
+   memcpy(&msg.mdata.baddress, baddress, sizeof(msg.mdata.baddress));    \
+@@ -3392,8 +3388,7 @@ int redir_main(struct redir_t *redir,
+     syslog(LOG_ERR, "%s: msgsnd() failed! msgid=%d type=%ld len=%d",    \
+            strerror(errno), redir->msgid, msg.mtype, (int)sizeof(msg.mdata)); \
+     return redir_main_exit(&socket, forked, rreq);                      \
+-  }                                                                     \
+-  } while (0)
++  }
+ #endif
+ 
+   /*
+@@ -4345,18 +4340,20 @@ int redir_main(struct redir_t *redir,
+ 
+     bstring url = bfromcstralloc(1024,"");
+     bstring urlenc = bfromcstralloc(1024,"");
+-
+     char *resp = splash ? "splash" : "notyet";
+ 
+-    redir_buildurl(&conn, url, redir, resp, 0, hexchal, NULL,
+-		   conn.s_state.redir.userurl, NULL, NULL,
+-		   conn.hismac, &conn.hisip);
+-    redir_urlencode(url, urlenc);
+-
+-    bassignformat(url, "%s%cloginurl=", base_url,
+-		  strchr(base_url, '?') ? '&' : '?');
+-
+-    bconcat(url, urlenc);
++    if (_options.xwfmode) {
++      bassignformat(url, "%s?xwf_cp_token=%s", base_url, conn.s_state.xwf_s.xwf_cp_token);
++    }
++    else {
++      redir_buildurl(&conn, url, redir, resp, 0, hexchal, NULL,
++		     conn.s_state.redir.userurl, NULL, NULL,
++		     conn.hismac, &conn.hisip);
++      redir_urlencode(url, urlenc);
++      bassignformat(url, "%s%cloginurl=", base_url,
++		    strchr(base_url, '?') ? '&' : '?');
++      bconcat(url, urlenc);
++    }
+ 
+     redir_reply(redir, &socket, &conn,
+ 		splash ? REDIR_SPLASH : REDIR_NOTYET, url,
+Index: coova-chilli-1.4/src/session.c
+===================================================================
+--- coova-chilli-1.4.orig/src/session.c
++++ coova-chilli-1.4/src/session.c
+@@ -24,7 +24,6 @@
+ #include "radius.h"
+ #include "chilli.h"
+ 
+-#ifdef ENABLE_JSON
+ int session_redir_json_fmt(bstring json, char *userurl, char *redirurl,
+ 			   bstring logouturl, uint8_t *hismac,
+ 			   struct in_addr *hisip) {
+@@ -161,5 +160,4 @@ int session_json_fmt(struct session_stat
+ 
+   return 0;
+ }
+-#endif
+ 
+Index: coova-chilli-1.4/src/session.h
+===================================================================
+--- coova-chilli-1.4.orig/src/session.h
++++ coova-chilli-1.4/src/session.h
+@@ -21,6 +21,7 @@
+ #ifndef _SESSION_H
+ #define _SESSION_H
+ 
++#include "xwf.h"
+ #include "chilli_limits.h"
+ #include "garden.h"
+ 
+@@ -197,6 +198,8 @@ struct session_state {
+   uint64_t bucketdownsize;
+ #endif
+ 
++  struct xwf_session xwf_s;
++
+ } __attribute__((packed));
+ 
+ #endif
+Index: coova-chilli-1.4/src/ssl.c
+===================================================================
+--- coova-chilli-1.4.orig/src/ssl.c
++++ coova-chilli-1.4/src/ssl.c
+@@ -35,13 +35,11 @@ openssl_env * initssl() {
+     if (openssl_init == 0) {
+       openssl_init = 1;
+ #ifdef HAVE_OPENSSL
+-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+       if (_options.debug) {
+ 	SSL_load_error_strings();
+       }
+       SSL_library_init();
+       OpenSSL_add_all_algorithms();
+-#endif
+ #else
+       matrixSslOpen();
+       syslog(LOG_DEBUG, "%s(%d): MatrixSslOpen()", __FUNCTION__, __LINE__);
+@@ -57,13 +55,11 @@ openssl_env * initssl_cli() {
+     if (openssl_init == 0) {
+       openssl_init = 1;
+ #ifdef HAVE_OPENSSL
+-#if OPENSSL_VERSION_NUMBER < 0x10100000L
+       if (_options.debug) {
+ 	SSL_load_error_strings();
+       }
+       SSL_library_init();
+       OpenSSL_add_all_algorithms();
+-#endif
+ #else
+       matrixSslOpen();
+       syslog(LOG_DEBUG, "%s(%d): MatrixSslOpen()", __FUNCTION__, __LINE__);
+@@ -131,12 +127,12 @@ _openssl_env_init(openssl_env *env, char
+    */
+   const long options = SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION;
+   env->meth = SSLv23_method();
+-  env->ctx = SSL_CTX_new((void *)env->meth);
++  env->ctx = SSL_CTX_new(env->meth);
+   SSL_CTX_set_options(env->ctx, options);
+   if (_options.sslciphers) {
+     SSL_CTX_set_cipher_list(env->ctx, _options.sslciphers);
+   }
+-#ifndef OPENSSL_NO_ENGINE
++#ifdef HAVE_OPENSSL_ENGINE
+   if (engine) {
+  retry:
+     if ((env->engine = ENGINE_by_id(engine)) == NULL) {
+@@ -613,7 +609,7 @@ openssl_env_free(openssl_env *env) {
+ #endif
+ #ifdef HAVE_OPENSSL
+   if (env->ctx) SSL_CTX_free(env->ctx);
+-#ifndef OPENSSL_NO_ENGINE
++#ifdef HAVE_OPENSSL_ENGINE
+   if (env->engine) ENGINE_free(env->engine);
+ #endif
+ #endif
+Index: coova-chilli-1.4/src/ssl.h
+===================================================================
+--- coova-chilli-1.4.orig/src/ssl.h
++++ coova-chilli-1.4/src/ssl.h
+@@ -41,15 +41,12 @@ typedef struct {
+ #include <openssl/ssl.h>
+ #include <openssl/pem.h>
+ #include <openssl/engine.h>
+-#include <openssl/err.h>
+ #elif HAVE_CYASSL
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <time.h>
+ #include <string.h>
+ 
+-#define OPENSSL_NO_ENGINE
+-#include <cyassl/options.h>
+ #include <cyassl/ssl.h>
+ #include <cyassl/openssl/bio.h>
+ #include <cyassl/openssl/crypto.h>
+Index: coova-chilli-1.4/src/statusfile.c
+===================================================================
+--- coova-chilli-1.4.orig/src/statusfile.c
++++ coova-chilli-1.4/src/statusfile.c
+@@ -29,7 +29,7 @@ extern struct ippool_t *ippool;
+ #ifdef ENABLE_BINSTATFILE
+ static int has_loaded = 0;
+ 
+-int loadstatus() {
++int loadstatus(void) {
+   char filedest[512];
+   FILE *file;
+   char c;
+@@ -303,7 +303,7 @@ int loadstatus() {
+   return 0;
+ }
+ 
+-int printstatus() {
++int printstatus(void) {
+   char filedest[512];
+   time_t tm;
+   FILE *file;
+@@ -371,12 +371,12 @@ int printstatus() {
+ }
+ #else
+ #ifdef ENABLE_STATFILE
+-int loadstatus() {
++int loadstatus(void) {
+   printstatus();
+   return 0;
+ }
+ 
+-int printstatus() {
++int printstatus(void) {
+   FILE *file;
+   char filedest[512];
+ 
+Index: coova-chilli-1.4/src/tun.c
+===================================================================
+--- coova-chilli-1.4.orig/src/tun.c
++++ coova-chilli-1.4/src/tun.c
+@@ -506,14 +506,6 @@ int tun_addaddr(struct tun_t *this, stru
+   this->addrs++;
+   return 0;
+ 
+-#elif defined (__sun__)
+-
+-  if (!this->addrs) /* Use ioctl for first addr to make ping work */
+-    return tun_setaddr(this, addr, dstaddr, netmask);
+-
+-  syslog(LOG_ERR, "%s: Setting multiple addresses not possible on Solaris", strerror(errno));
+-  return -1;
+-
+ #else
+ #error  "Unknown platform!"
+ #endif
+@@ -540,12 +532,6 @@ int tuntap_interface(struct _net_interfa
+   struct ifaliasreq areq;
+   int fd;
+ 
+-#elif defined(__sun__)
+-  int if_fd, ppa = -1;
+-  static int ip_fd = 0;
+-  int muxid;
+-  struct ifreq ifr;
+-
+ #else
+ #error  "Unknown platform!"
+ #endif
+@@ -687,66 +673,6 @@ int tuntap_interface(struct _net_interfa
+   close(fd);
+   return 0;
+ 
+-#elif defined(__sun__)
+-
+-  if ((ip_fd = open("/dev/udp", O_RDWR, 0)) < 0) {
+-    syslog(LOG_ERR, "%s: Can't open /dev/udp", strerror(errno));
+-    return -1;
+-  }
+-
+-  if ((netif->fd = open("/dev/tun", O_RDWR, 0)) < 0) {
+-    syslog(LOG_ERR, "%s: Can't open /dev/tun", strerror(errno));
+-    return -1;
+-  }
+-
+-  /* Assign a new PPA and get its unit number. */
+-  if ((ppa = ioctl(netif->fd, TUNNEWPPA, -1)) < 0) {
+-    syslog(LOG_ERR, "%s: Can't assign new interface", strerror(errno));
+-    return -1;
+-  }
+-
+-  if ((if_fd = open("/dev/tun", O_RDWR, 0)) < 0) {
+-    syslog(LOG_ERR, "%s: Can't open /dev/tun (2)", strerror(errno));
+-    return -1;
+-  }
+-
+-  if (ioctl(if_fd, I_PUSH, "ip") < 0){
+-    syslog(LOG_ERR, "%d Can't push IP module");
+-    return -1;
+-  }
+-
+-  /* Assign ppa according to the unit number returned by tun device */
+-  if (ioctl(if_fd, IF_UNITSEL, (char *)&ppa) < 0) {
+-    syslog(LOG_ERR, "%d Can't set PPA %d", ppa);
+-    return -1;
+-  }
+-
+-  /* Link the two streams */
+-  if ((muxid = ioctl(ip_fd, I_LINK, if_fd)) < 0) {
+-    syslog(LOG_ERR, "%d Can't link TUN device to IP");
+-    return -1;
+-  }
+-
+-  close (if_fd);
+-
+-  snprintf(netif->devname, sizeof(netif->devname),
+-		"tun%d", ppa);
+-
+-  memset(&ifr, 0, sizeof(ifr));
+-  strlcpy(ifr.ifr_name, netif->devname, sizeof(ifr.ifr_name));
+-  ifr.ifr_ip_muxid = muxid;
+-
+-  if (ioctl(ip_fd, SIOCSIFMUXID, &ifr) < 0) {
+-    ioctl(ip_fd, I_PUNLINK, muxid);
+-    syslog(LOG_ERR, "%d Can't set multiplexor id");
+-    return -1;
+-  }
+-
+-  /*  if (fcntl (fd, F_SETFL, O_NONBLOCK) < 0)
+-      msg (M_ERR, "Set file descriptor to non-blocking failed"); */
+-
+-  return 0;
+-
+ #else
+ #error  "Unknown platform!"
+ #endif
+@@ -943,29 +869,6 @@ int tun_decaps(struct tun_t *this, int i
+   }
+ 
+   return 0;
+-
+-#elif defined (__sun__)
+-  struct pkt_buffer pb;
+-  uint8_t packet[PKT_MAX_LEN+4];
+-  ssize_t length;
+-  struct strbuf sbuf;
+-  int f = 0;
+-
+-  pkt_buffer_init(&pb, packet, sizeof(packet), 4);
+-
+-  sbuf.maxlen = pkt_buffer_size(&pb);
+-  sbuf.buf = pkt_buffer_head(&pb);
+-  if (getmsg(tun(this, idx).fd, NULL, &sbuf, &f) < 0) {
+-    syslog(LOG_ERR, "%d getmsg() failed");
+-    return -1;
+-  }
+-
+-  pb.length = sbuf.len;
+-
+-  if (this->cb_ind)
+-    return this->cb_ind(this, &pb);
+-  return 0;
+-
+ #endif
+ }
+ 
+@@ -1007,13 +910,6 @@ int tun_write(struct tun_t *tun, uint8_t
+ 
+   return safe_write(tun(tun, idx).fd, pack, len);
+ 
+-#elif defined (__sun__)
+-
+-  struct strbuf sbuf;
+-  sbuf.len = len;
+-  sbuf.buf = pack;
+-  return putmsg(tun(tun, idx).fd, NULL, &sbuf, 0);
+-
+ #endif
+ }
+ 
+Index: coova-chilli-1.4/www/ChilliLibrary.js
+===================================================================
+--- coova-chilli-1.4.orig/www/ChilliLibrary.js
++++ coova-chilli-1.4/www/ChilliLibrary.js
+@@ -250,7 +250,7 @@ chilliController.logonStep2 = function (
+ 		return chilliController.onError('Cannot get challenge');
+ 	}
+ 
+-	if ( resp.clientSate === chilliController.stateCodes.AUTH ) {
++	if ( resp.clientState === chilliController.stateCodes.AUTH ) {
+ 		log('logonStep2: Already connected. Aborting.');
+ 		return chilliController.onError('Already connected.');
+ 	}
+Index: coova-chilli-1.4/src/radius_xwf.h
+===================================================================
+--- /dev/null
++++ coova-chilli-1.4/src/radius_xwf.h
+@@ -0,0 +1,42 @@
++/* -*- mode: c; c-basic-offset: 2 -*- */
++/*
++ * Copyright (C) 2017 Mohamad Haj Yahia (Facebook) <mhy@fb.com>
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#ifndef _RADIUS_XWF_H
++#define _RADIUS_XWF_H
++
++#define RADIUS_VENDOR_XWF                                       40981
++#define	RADIUS_ATTR_XWF_RESTRICT_TO_WALLED_GARDEN               1 /* integer */
++#define	RADIUS_ATTR_XWF_CAPTIVE_PORTAL_TOKEN                    2 /* string */
++#define	RADIUS_ATTR_XWF_ALLOWED_QUOTA                           3 /* integer */
++
++#define	RADIUS_ATTR_XWF_AUTHORIZE_TRAFFIC_CLASSES               4  /* tlv */
++#define	XWF_AUTHORIZE_TLV_CLASS_NAME                            1 /* string */
++#define	XWF_AUTHORIZE_TLV_BYTES_LEFT                            2 /* integer64 */
++
++#define	RADIUS_ATTR_XWF_TRAFFIC_CLASSES_ACCT                    5 /* tlv */
++#define	XWF_ACCT_TLV_CLASS_NAME                                 1 /* string */
++#define	XWF_ACCT_TLV_INPUT_OCTETS                               2 /* integer64 */
++#define	XWF_ACCT_TLV_OUTPUT_OCTETS                              3 /* integer64 */
++#define	XWF_ACCT_TLV_INPUT_PACKETS                              4 /* integer64 */
++#define	XWF_ACCT_TLV_OUTPUT_PACKETS                             5 /* integer64 */
++
++#define RADIUS_VALUE_XWF_RESTRICT_TO_WALLED_GARDEN_TRUE             0
++#define RADIUS_VALUE_XWF_RESTRICT_TO_WALLED_GARDEN_FALSE            1
++
++#endif	/* !_RADIUS_XWF_H */
+Index: coova-chilli-1.4/src/xwf.c
+===================================================================
+--- /dev/null
++++ coova-chilli-1.4/src/xwf.c
+@@ -0,0 +1,1545 @@
++  /* -*- mode: c; c-basic-offset: 2 -*- */
++/*
++ * Copyright (C) 2017 Mohamad Haj Yahia (Facebook LTD) <mhy@fb.com>
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#include "chilli.h"
++#ifdef ENABLE_XWF_SDN_OOB
++#include <mqueue.h>
++
++mqd_t qd_chilli, qd_xwfsw;
++#endif
++
++/*
++ * Inline helper functions
++ */
++
++#ifdef DOCKER_ENV
++static char *
++#else
++static inline char *
++#endif
++__dom_clean(char *s) {
++  char *trim = NULL;
++
++  /* clean whitespaces and stars */
++  if (!s) return NULL;
++  while (isspace((int) *s) || *s == '*') s++;
++  if (!*s) return NULL;
++
++  /* clean protocols */
++  if (strstr(s, "://"))
++    s = strstr(s, "://") + strlen("://");
++
++  /* clean suffixes */
++  trim = strchr(s, '/');
++  if (trim)
++    *trim = 0;
++
++  return s;
++}
++
++/**
++ * xwf_add_tc_domain()
++ * Add allowed domain (or domain suffix) to a TC
++ **/
++static void
++xwf_add_tc_domain(struct xwf_global_info *gi, int tc, const char *dom) {
++  char* dom_copy = strdup(dom);
++  char *tocopy = __dom_clean(dom_copy);
++
++  if (tocopy) {
++    gi->tc[tc].darr[gi->tc[tc].dnum++] = strdup(tocopy);
++  }
++  free(dom_copy);
++}
++
++/**
++ * xwf_load_config_file()
++ * Read the XWF configuration file
++ **/
++static void
++xwf_load_config_file(struct xwf_global_info *gi, char *fname) {
++  char *line = 0;
++  size_t len = 0;
++  int tc = -1;
++  ssize_t read;
++  FILE *fp;
++  fp = fopen(fname, "r");
++  if (!fp) {
++    syslog(LOG_ERR, "%d could not open file %s", errno, fname);
++    return;
++  }
++
++  while ((read = getline(&line, &len, fp)) != -1) {
++    if (read <= 0 || !line[0] || line[0] == '#')
++      continue;
++
++    char *pline = line;
++    tc = -1;
++
++    /* clean whitespaces */
++    while (isspace((int) pline[read-1]))
++      pline[--read] = 0;
++    if (!read)
++      continue;
++    while (isspace((int) pline[0]))
++      pline++;
++
++    /* parse new guest-access configuration */
++    if (!strncmp(pline, XWF_GUEST_ACCESS_OPNAME, strlen(XWF_GUEST_ACCESS_OPNAME))) {
++      pline = strchr(pline, ' ');
++      if (!pline || !++pline)
++        continue;
++
++      if (!strncmp(pline, XWF_TRAFFIC_CLASS_OPNAME, strlen(XWF_TRAFFIC_CLASS_OPNAME))) {
++        pline = strchr(pline, ' ');
++        if (!pline || !++pline)
++          continue;
++        /* parse internet tc name */
++        if (!strncmp(pline, XWF_INTERNET_TC_NAME_OPNAME, strlen(XWF_INTERNET_TC_NAME_OPNAME))) {
++          pline = strchr(pline, ' ');
++          if (!pline || !++pline || (strlen(pline) == 0) || strchr(pline, ' '))
++            continue;
++          strcpy(gi->tc[XWF_INTERNET_TC_IDX].tc_name, pline);
++          continue;
++        }
++
++        /* parse tc number */
++        if (!isdigit((int)*pline))
++          continue;
++        tc = 0;
++        while (pline && isdigit((int)*pline)) {
++          tc = 10*tc + (*pline - '0');
++          pline++;
++        }
++        if (tc >= XWF_MAX_TC_NUM || !pline || !++pline)
++          continue;
++
++        /* parse tc name */
++        if (!strncmp(pline, XWF_TC_NAME_OPNAME, strlen(XWF_TC_NAME_OPNAME))) {
++          pline = strchr(pline, ' ');
++          if (!pline || !++pline || (strlen(pline) == 0) || strchr(pline, ' '))
++            continue;
++
++          gi->tc[tc].valid = 1;
++          strcpy(gi->tc[tc].tc_name, pline);
++
++#ifdef ENABLE_XWF_SDN_OOB
++          if (!strcmp(gi->tc[tc].tc_name, "xwf")) {
++            gi->xwf_tc_idx = tc;
++          }
++          if (!strcmp(gi->tc[tc].tc_name, "fbs")) {
++            gi->fbs_tc_idx = tc;
++          }
++#endif
++
++          continue;
++        }
++
++        /* parse new permit */
++        if (!strncmp(pline, XWF_PERMIT_OPNAME, strlen(XWF_PERMIT_OPNAME))) {
++          pline = strchr(pline, ' ');
++          if (!pline || !++pline)
++            continue;
++
++          struct in_addr tmp;
++          if (option_aton(&tmp, &tmp, pline, 0))
++            xwf_add_tc_domain(gi, tc, pline);
++          pass_throughs_from_string(gi->tc[tc].pass_throughs, XWF_MAX_PT_NUM,
++    				&gi->tc[tc].num_pass_throughs, pline, 0, 0
++    #ifdef HAVE_PATRICIA
++    				, 0
++    #endif
++    				);
++          continue;
++        }
++        continue;
++      }
++    }
++
++    /* parse enable tc based auth (XWF FULL) */
++    if (!strncmp(pline, XWF_ENABLE_TC_MODE_OPNAME, strlen(XWF_ENABLE_TC_MODE_OPNAME))) {
++      gi->flags |= XWF_TC_MODE_ENABLED;
++      continue;
++    }
++  }
++
++  fclose(fp);
++
++  if (line)
++    free(line);
++}
++
++/**
++ * ip2tc_ptreenode_new()
++ * Creates new ip2tc prefix tree node and initialize it
++ **/
++static int
++ip2tc_ptreenode_new(struct ip2tc_ptreenode **ptn) {
++
++  if (!ptn)
++    return -EINVAL;
++  if (!(*ptn = malloc(sizeof(struct ip2tc_ptreenode)))) {
++    /* Failed to allocate memory for ptree node */
++    return -ENOMEM;
++  }
++
++  memset(*ptn, 0, sizeof(struct ip2tc_ptreenode));
++
++  return 0;
++}
++
++/**
++ * ip2tc_ptreenode_destroy_rec()
++ * Destroy all the ptn sub-tree (that ptn is its root) recursively.
++ **/
++static void
++ip2tc_ptreenode_destroy_rec(struct ip2tc_ptreenode *ptn) {
++  int child = 0;
++
++  if (!ptn)
++    return;
++
++  for (child = 0; child < IP2TC_PTREE_LAYER_SIZE; child++)
++    ip2tc_ptreenode_destroy_rec(ptn->next_l[child]);
++
++  free(ptn);
++}
++
++/**
++ * ip2tc_ptree_init()
++ * Initialize ip2tc prefix tree
++ **/
++static int
++ip2tc_ptree_init(struct ip2tc_ptree *pt) {
++  int err = 0;
++
++  if (!pt)
++    return -EINVAL;
++
++  err = ip2tc_ptreenode_new(&pt->root);
++
++  return err;
++}
++
++/**
++ * ip2tc_ptree_destroy()
++ * Destroy the ip2tc prefix tree
++ **/
++static void
++ip2tc_ptree_destroy(struct ip2tc_ptree *pt) {
++
++  if (!pt)
++    return;
++
++  ip2tc_ptreenode_destroy_rec(pt->root);
++}
++
++/**
++ * ip2tc_ptree_add_rec()
++ * Add ip address (masked for networks support) to tc mapping in the tree headed by ptn root.
++ * note: ipaddr/mask received is in network byte order
++ **/
++static int
++ip2tc_ptree_add_rec(struct ip2tc_ptreenode *ptn, uint32_t ipaddr,
++		    uint32_t mask, int tc) {
++  uint32_t bytemask = (mask & IP2TC_PTREE_CHILD_MASK);
++  int child = 0;
++  int err = 0;
++
++  if (!ptn)
++    return 0;
++
++  if (!mask) {
++    ptn->exist = 1;
++    ptn->tc_arr[tc] = 1;
++    return 0;
++  }
++
++  for (child = 0; child < IP2TC_PTREE_LAYER_SIZE; child++) {
++    if ((child & bytemask) != (ipaddr & bytemask))
++      continue;
++    if (!ptn->next_l[child] && (err = ip2tc_ptreenode_new(&ptn->next_l[child])))
++      return err;
++    err = ip2tc_ptree_add_rec(ptn->next_l[child],
++			      ipaddr >> IP2TC_PTREE_KEY_SHIFT,
++			      mask >> IP2TC_PTREE_KEY_SHIFT, tc);
++    if (err)
++      return err;
++  }
++
++  return 0;
++}
++
++/**
++ * ip2tc_ptree_add()
++ * Add ip address (masked for networks support) to tc mapping.
++ * note: ipaddr/mask received is in network byte order
++ **/
++#ifdef ENABLE_XWF_SDN_OOB
++static int
++ip2tc_ptree_add(struct xwf_global_info *gi, struct ip2tc_ptree *pt, uint32_t ipaddr, uint32_t mask, int tc) {
++#else
++static int
++ip2tc_ptree_add(struct ip2tc_ptree *pt, uint32_t ipaddr, uint32_t mask, int tc) {
++#endif
++
++  if (!pt || !pt->root)
++    return -EINVAL;
++
++#ifdef ENABLE_XWF_SDN_OOB
++  char out_buffer[MAX_MSG_SIZE] = {0};
++  struct chilli_cmdif_msg* msg = (struct chilli_cmdif_msg*)out_buffer;
++  msg->cmd_code = (tc == gi->xwf_tc_idx) ? XWFSW_CHILLI_XWF_IP_LIST :
++                                           XWFSW_CHILLI_FBS_IP_LIST;
++  struct chilli_passthrough_ip* ptip = (struct chilli_passthrough_ip*)msg->data;
++  ptip->ip.s_addr = ipaddr;
++  ptip->mask.s_addr = mask;
++  mq_send (qd_xwfsw, out_buffer, MAX_MSG_SIZE, 0);
++#endif
++
++  return ip2tc_ptree_add_rec(pt->root, ipaddr, mask, tc);
++}
++
++/**
++ * ip2tc_ptree_get()
++ * Return all the TCs that contains the ipaddr
++ * note: ipaddr/mask received is in network byte order
++ **/
++static void
++ip2tc_ptree_get(struct ip2tc_ptree *pt, uint32_t ipaddr, char *tc_match) {
++  struct ip2tc_ptreenode *p = NULL;
++  uint8_t child = 0;
++  int tc = 0;
++
++  if (!pt)
++    return;
++
++  memset(tc_match, 0, sizeof(char) * XWF_MAX_TC_NUM);
++  tc_match[XWF_INTERNET_TC_IDX] = 1;
++  p = pt->root;
++  while (p) {
++    if (p->exist) {
++      for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++        if (p->tc_arr[tc])
++          tc_match[tc] = 1;
++      }
++    }
++    child = ipaddr & IP2TC_PTREE_CHILD_MASK;
++    ipaddr >>= IP2TC_PTREE_KEY_SHIFT;
++    p = p->next_l[child];
++  }
++}
++
++/**
++ * xwf_cleanup_ip2tc_pt()
++ * cleans all ip2tc prefix tree resources
++ **/
++static void
++xwf_cleanup_ip2tc_pt(struct xwf_global_info *gi) {
++  ip2tc_ptree_destroy(&gi->pt);
++}
++
++/**
++ * xwf_fill_ip2tc_pt()
++ * fills initial passthroughs got from XWF conf file
++ **/
++static int
++xwf_fill_ip2tc_pt(struct xwf_global_info *gi) {
++  int pt_idx = 0;
++  int err = 0;
++  int tc = 0;
++
++  ip2tc_ptree_init(&gi->pt);
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    for (pt_idx = 0; pt_idx < gi->tc[tc].num_pass_throughs; pt_idx++) {
++#ifdef ENABLE_XWF_SDN_OOB
++      err = ip2tc_ptree_add(gi, &gi->pt,
++			    gi->tc[tc].pass_throughs[pt_idx].host.s_addr,
++			    gi->tc[tc].pass_throughs[pt_idx].mask.s_addr,
++			    tc);
++#else
++      err = ip2tc_ptree_add(&gi->pt,
++                            gi->tc[tc].pass_throughs[pt_idx].host.s_addr,
++                            gi->tc[tc].pass_throughs[pt_idx].mask.s_addr,
++                            tc);
++#endif
++
++      if (err)
++        goto handle_err;
++
++    }
++  }
++
++  return 0;
++
++handle_err:
++  xwf_cleanup_ip2tc_pt(gi);
++  return err;
++}
++
++/**
++ * xwf_global_info_create()
++ * Creates new global info struct based on the given conf file
++ **/
++struct xwf_global_info *
++xwf_global_info_create(char *conf_filename) {
++  struct xwf_global_info *gi = malloc(sizeof(struct xwf_global_info));
++
++  memset(gi, 0, sizeof(struct xwf_global_info));
++
++  /* Initialize the Internet TC */
++  gi->tc[XWF_INTERNET_TC_IDX].valid = 1;
++  strcpy(gi->tc[XWF_INTERNET_TC_IDX].tc_name, XWF_INTERNET_DEF_TC_NAME);
++
++  if (conf_filename && *conf_filename)
++    xwf_load_config_file(gi, conf_filename);
++
++#ifdef ENABLE_XWF_SDN_OOB
++  struct mq_attr attr;
++  attr.mq_flags = 0;
++  attr.mq_maxmsg = MAX_MESSAGES;
++  attr.mq_msgsize = MAX_MSG_SIZE;
++  attr.mq_curmsgs = 0;
++  if ((qd_chilli = mq_open (CHILLI_SDN_QUEUE_NAME, O_RDONLY | O_CREAT,
++                            QUEUE_PERMISSIONS, &attr)) == -1) {
++    syslog(LOG_ERR, "Failed to open chilli queue file");
++    exit (1);
++  }
++  if ((qd_xwfsw = mq_open (XWFSW_SDN_QUEUE_NAME, O_WRONLY | O_CREAT,
++                           QUEUE_PERMISSIONS, &attr)) == -1) {
++    syslog(LOG_ERR, "Failed to open xwfswitch queue file");
++    exit (1);
++  }
++#endif
++
++  if (xwf_fill_ip2tc_pt(gi)) {
++    free(gi);
++    gi = NULL;
++  }
++  return gi;
++}
++
++/**
++ * xwf_global_info_destroy()
++ * Destroys a given global info struct
++ **/
++void xwf_global_info_destroy(struct xwf_global_info *gi) {
++  int tc = 0;
++  int di = 0;
++
++#ifdef ENABLE_XWF_SDN_OOB
++  if (mq_close (qd_xwfsw) == -1) {
++    syslog(LOG_ERR, "Failed to close xwfswitch queue file");
++    exit (1);
++  }
++
++  if (mq_unlink (XWFSW_SDN_QUEUE_NAME) == -1) {
++    syslog(LOG_ERR,"Failed to unlink xwfswitch queue file");
++    exit (1);
++  }
++  if (mq_close (qd_chilli) == -1) {
++    syslog(LOG_ERR,"Failed to close chilli queue file");
++    exit (1);
++  }
++
++  if (mq_unlink (CHILLI_SDN_QUEUE_NAME) == -1) {
++    syslog(LOG_ERR,"Failed to unlink chilli queue file");
++    exit (1);
++  }
++#endif
++
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    if (!gi->tc[tc].valid)
++      continue;
++    for (di = 0; di < gi->tc[tc].dnum; di++) {
++      free(gi->tc[tc].darr[di]);
++    }
++    gi->tc[tc].dnum = 0;
++  }
++
++  xwf_cleanup_ip2tc_pt(gi);
++  free(gi);
++}
++
++/**
++ * xwf_getinfo()
++ * Dump all XWF info to the given bstring
++ **/
++void
++xwf_getinfo(struct xwf_global_info *gi, bstring b) {
++  int tc = 0;
++  int i = 0;
++
++  if (!IS_XWF_FULL_MODE(gi)) {
++    bcatcstr(b, "XWF operating in C-Lite mode.");
++    return;
++  }
++
++  bcatcstr(b, "XWF operating in C-Full mode.\n");
++  bcatcstr(b, "XWF C-Full traffic classes:\n");
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    if (!gi->tc[tc].valid)
++      continue;
++    bformata(b, "%d) %s:\n", tc, gi->tc[tc].tc_name);
++    bcatcstr(b, "IP passthroughs list:\n");
++    for (i = 0; i < gi->tc[tc].num_pass_throughs; i++) {
++      bformata(b, "host=%s ,", inet_ntoa(gi->tc[tc].pass_throughs[i].host));
++      bformata(b, " mask=%s\n", inet_ntoa(gi->tc[tc].pass_throughs[i].mask));
++    }
++    bcatcstr(b, "Domains list:\n");
++    for (i = 0; i < gi->tc[tc].dnum; i++) {
++      bformata(b, "\"%s\"\n", gi->tc[tc].darr[i]);
++    }
++    bcatcstr(b, "\n");
++  }
++}
++
++/*
++ * Return last ended window if it ended in last 2*window_size - null otherwise
++ */
++struct xwf_tc_hires_window *
++xwf_get_valid_hires_window(struct xwf_tc_hires_stats *stats) {
++  int window_size = XWF_HIRES_WINDOW_SIZE_MS;
++  struct timespec now;
++  clock_gettime(CLOCK_MONOTONIC, &now);
++  u_int64_t ms_since_curr =
++         timespec_ms_diff(stats->current_window.start_time, now);
++  u_int64_t ms_since_prev =
++         timespec_ms_diff(stats->previous_window.start_time, now);
++  /*
++   * ms_since_curr > 2*window_size = the current window ended too long ago for it
++   * to be valid. ms_since_prev>2*window_size and ms_since_curr<window_size = the
++   * prev window ended too long ago to be valid and the current window is in progress.
++   */
++  if(ms_since_curr > 2*window_size ||
++           (ms_since_prev > 2*window_size && ms_since_curr < window_size))
++    return NULL;
++  else if(ms_since_curr > window_size)
++    return &stats->current_window;
++  else
++    return &stats->previous_window;
++}
++
++/**
++ * xwf_add_tlv()
++ * Add TLV attribute to the end of the VSA
++ **/
++static int
++xwf_add_tlv(struct xwf_multi_tlv_vsa_t *xwf_avp, uint8_t type,
++	    uint64_t value, uint8_t is_64bit_val,
++	    uint8_t *data, uint8_t dlen) {
++  uint8_t length = xwf_avp->l;
++  struct xwf_tlv_t *a = NULL;
++  uint16_t tlv_length = 0;
++  uint8_t vlen = dlen;
++
++  if (!vlen)
++    vlen = is_64bit_val ? sizeof(uint64_t) : sizeof(uint32_t);
++  tlv_length = vlen + XWF_TLV_HDRSIZE;
++  if (length + tlv_length > RADIUS_ATTR_VLEN) {
++    syslog(LOG_ERR, "XWF AVP (%d bytes) cannot cannot contain this large XWF TLV (%d bytes,%d type)",
++	   length, tlv_length, type);
++    return -EINVAL;
++  }
++
++  a = (struct xwf_tlv_t *)((uint8_t*)xwf_avp + length);
++  a->t = type;
++  a->l = tlv_length;
++  if (dlen) {
++    memcpy(a->v.t, data, dlen);
++  }
++  else {
++    if (is_64bit_val) {
++      a->v.li = htonll(value);
++    }
++    else {
++      a->v.i = htonl((uint32_t)value);
++    }
++  }
++  length += tlv_length;
++  xwf_avp->l = length;
++
++  return 0;
++}
++
++/**
++ * xwf_getnexttlv()
++ * Get first corresponding TLV attribute starting from offset
++ **/
++static int
++xwf_getnexttlv(struct xwf_multi_tlv_vsa_t *xwf_avp, struct xwf_tlv_t **tlv,
++               uint8_t tlv_type, int instance, size_t *roffset) {
++  size_t len = xwf_avp->l - XWF_MULTI_TLV_VSA_HDRSIZE;
++  size_t offset = *roffset;
++  struct xwf_tlv_t *t;
++  int count = 0;
++
++  while (offset < len) {
++    t = (struct xwf_tlv_t *) (&xwf_avp->payload[offset]);
++    offset += t->l;
++
++    if (t->t == 0 || t->l < 2)
++      return -1;
++
++    if (t->t != tlv_type)
++      continue;
++
++    if (count == instance) {
++      *tlv = t;
++      *roffset = offset;
++      return 0;
++    }
++    else {
++      count++;
++    }
++  }
++
++  return -1; /* Not found */
++}
++
++/**
++ * xwf_fill_default_avp()
++ * Initialize new multi-tlv VSA attribute
++ **/
++static void
++xwf_fill_default_avp(struct xwf_multi_tlv_vsa_t *xwf_avp, uint8_t type) {
++
++  memset(xwf_avp, 0, RADIUS_ATTR_VLEN);
++  xwf_avp->l = XWF_MULTI_TLV_VSA_HDRSIZE;
++  xwf_avp->t = type;
++}
++
++/**
++ * xwf_fill_acct_avp()
++ * Attach relevant TC accounting TLVs to the multi-tlv VSA attribute
++ **/
++static int
++xwf_fill_acct_avp(struct xwf_global_info *gi, struct xwf_session* xwf_s,
++		  struct xwf_multi_tlv_vsa_t *xwf_avp) {
++  int tc_cnt = 0;
++  int tc = 0;
++
++  xwf_fill_default_avp(xwf_avp, RADIUS_ATTR_XWF_TRAFFIC_CLASSES_ACCT);
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    if (xwf_s->tc[tc].flags & XWF_TC_ACCOUNTED) {
++      if (_options.debug)
++        syslog (LOG_DEBUG, "%s(%d): Accounting TC %s",
++		__FUNCTION__, __LINE__, gi->tc[tc].tc_name);
++      xwf_add_tlv(xwf_avp, XWF_ACCT_TLV_CLASS_NAME, 0, 0,
++			 (uint8_t *)gi->tc[tc].tc_name,
++			 strlen(gi->tc[tc].tc_name));
++      xwf_add_tlv(xwf_avp, XWF_ACCT_TLV_INPUT_OCTETS,
++		  xwf_s->tc[tc].tc_stats.input_octets, 1, NULL, 0);
++      xwf_add_tlv(xwf_avp, XWF_ACCT_TLV_OUTPUT_OCTETS,
++		  xwf_s->tc[tc].tc_stats.output_octets, 1, NULL, 0);
++      xwf_add_tlv(xwf_avp, XWF_ACCT_TLV_INPUT_PACKETS,
++		  xwf_s->tc[tc].tc_stats.input_packets, 1, NULL, 0);
++      xwf_add_tlv(xwf_avp, XWF_ACCT_TLV_OUTPUT_PACKETS,
++		  xwf_s->tc[tc].tc_stats.output_packets, 1, NULL, 0);
++      xwf_s->tc[tc].last_accounted_total_octets =
++					(xwf_s->tc[tc].tc_stats.input_octets +
++					 xwf_s->tc[tc].tc_stats.output_octets);
++      tc_cnt++;
++    }
++  }
++  return tc_cnt;
++}
++
++/*
++ * This function is called for each ACCT request to attach XWF TC acct attribute
++ */
++int
++xwf_add_acct_attrs(struct xwf_global_info *gi,
++		   struct xwf_session* xwf_s,
++		   struct radius_t *radius,
++		   struct radius_packet_t *radius_pack) {
++  struct xwf_multi_tlv_vsa_t xwf_avp;
++  int err = 0;
++
++  if (xwf_fill_acct_avp(gi, xwf_s, &xwf_avp))
++    err = radius_addattr(radius, radius_pack, RADIUS_ATTR_VENDOR_SPECIFIC,
++			 RADIUS_VENDOR_XWF,
++			 RADIUS_ATTR_XWF_TRAFFIC_CLASSES_ACCT, 0,
++			 xwf_avp.payload,
++			 xwf_avp.l - XWF_MULTI_TLV_VSA_HDRSIZE);
++  return err;
++}
++
++/*
++ * This function is called to account UE traffic
++ */
++void
++xwf_acct_pkt(struct xwf_global_info *gi,
++	     struct app_conn_t *appconn,
++	     struct pkt_ipphdr_t *ipph,
++	     int dst) {
++  int xwf_tc_idx = xwf_get_authorized_tc(gi,
++					 &appconn->s_state.xwf_s,
++					 (struct pkt_iphdr_t *)ipph,
++					 dst);
++  int len = ntohs(ipph->tot_len);
++
++  if (xwf_tc_idx < 0)
++    return;
++
++  if(ipph->protocol == PKT_IP_PROTO_TCP)
++    xwf_acct_tcp_pkt(&appconn->s_state.xwf_s.tcp_retransmit_stats, ipph);
++
++  if ((dst > 0) ^ (_options.swapoctets > 0)) {
++    appconn->s_state.xwf_s.tc[xwf_tc_idx].tc_stats.output_packets++;
++    appconn->s_state.xwf_s.tc[xwf_tc_idx].tc_stats.output_octets += len;
++  }
++  else {
++    appconn->s_state.xwf_s.tc[xwf_tc_idx].tc_stats.input_packets++;
++    appconn->s_state.xwf_s.tc[xwf_tc_idx].tc_stats.input_octets += len;
++  }
++
++  xwf_acct_hires(&appconn->s_state.xwf_s.tc[xwf_tc_idx].tc_stats.hires_stats,
++           len, dst);
++}
++
++/*
++ * Track for retransmits based on the sequence number of incoming tcp pkt.
++ * Not all connections are monitored just those in the stats->connections hashtable
++ * Only packets that have an existing entry in the hashtable and are carrying data
++ * (total length > length of headers) are 'sampled' because these are the only
++ * packets that will be recognized as retransmitted if lost. Retransmits can be missed
++ * if they occur when the congestion window can be filled with 1 packet.
++ */
++void
++xwf_acct_tcp_pkt(struct xwf_tcp_retransmit_stats *stats, struct pkt_ipphdr_t *ipph) {
++  time_t now = time(0);
++  struct xwf_tcp_conn_monitor *tcp_conn = 0;
++  struct pkt_tcphdr_t *tcph = (struct pkt_tcphdr_t *)(((uint8_t *)ipph) + PKT_IP_HLEN);
++
++  stats->total_packets++;
++  // Hashtable already has an entry for this connection
++  if(!xwf_tcp_conn_hash_get(ipph, stats, &tcp_conn)) {
++    if(tcph->flags & TCPHDR_FLAG_FIN || tcph->flags & TCPHDR_FLAG_RST) {
++      memset(tcp_conn, 0, sizeof(struct xwf_tcp_conn_monitor));
++    }
++    else if(ntohs(ipph->tot_len) > PKT_IP_HLEN + (tcph->offres >> 4)*4) {
++      stats->sampled_packets++;
++      tcp_conn->last_activity = now;
++      // If packet arrives out of order (account for wrap around once seq >= 2^32)
++      if(ntohl(tcph->seq) - tcp_conn->seq_max > (1 << 31))
++        stats->retransmit_packets++;
++      else
++        tcp_conn->seq_max = ntohl(tcph->seq);
++    }
++  }
++  // Create a new entry in hashtable if the old one has timed out (or it was empty)
++  else if(now - tcp_conn->last_activity > XWF_TCP_CONN_MONITOR_TIMEOUT_SEC
++          && ntohs(ipph->tot_len) > PKT_IP_HLEN + (tcph->offres >> 4)*4) {
++    tcp_conn->saddr = ipph->saddr;
++    tcp_conn->daddr = ipph->daddr;
++    tcp_conn->sport = ipph->sport;
++    tcp_conn->dport = ipph->dport;
++    tcp_conn->seq_max = ntohl(tcph->seq);
++    tcp_conn->last_activity = now;
++  }
++}
++
++/*
++* fill *hash_entry with the hashtable entry corresponding to ipph's ports' hash.
++* return 0 if it matches ipph's connection -1 otherwise
++*/
++int
++xwf_tcp_conn_hash_get(struct pkt_ipphdr_t *ipph,
++          struct xwf_tcp_retransmit_stats *stats,
++          struct xwf_tcp_conn_monitor **hash_entry) {
++  uint32_t hash = lookup((uint8_t *)&ipph->sport, 4, 0);
++  hash &= XWF_TCP_CONN_HASHMASK;
++  *hash_entry = &stats->connections[hash];
++  if(ipph->saddr == (*hash_entry)->saddr && ipph->daddr == (*hash_entry)->daddr
++          && ipph->sport == (*hash_entry)->sport && ipph->dport == (*hash_entry)->dport)
++    return 0;
++  else
++    return -1;
++}
++
++/*
++ * this function keeps track of tc's current interval's throughput
++ */
++void
++xwf_acct_hires(struct xwf_tc_hires_stats *stats, int len, int dst) {
++  struct timespec now;
++  clock_gettime(CLOCK_MONOTONIC, &now);
++
++  if(timespec_ms_diff(stats->interval_start_time, now)
++          > XWF_HIRES_INTERVAL_SIZE_MS)
++    xwf_record_hires_interval(stats, now);
++
++  if(timespec_ms_diff(stats->current_window.start_time, now)
++          > XWF_HIRES_WINDOW_SIZE_MS) {
++    stats->previous_window = stats->current_window;
++    memset(&stats->current_window, 0, sizeof(struct xwf_tc_hires_window));
++    stats->current_window.start_time = now;
++  }
++
++  if ((dst > 0) ^ (_options.swapoctets > 0))
++    stats->interval_output_octets += len;
++  else
++    stats->interval_input_octets += len;
++}
++
++/*
++ * this function is to record the previous interval and reset the field for the next interval
++ */
++void
++xwf_record_hires_interval(struct xwf_tc_hires_stats *stats, struct timespec now) {
++  if(stats->interval_input_octets + stats->interval_output_octets == 0)
++    return;
++
++  struct xwf_tc_hires_window *current_window = &stats->current_window;
++  current_window->non_zero_intervals += 1;
++  current_window->total_input_octets += stats->interval_input_octets;
++  current_window->total_output_octets += stats->interval_output_octets;
++
++  if(stats->interval_input_octets > current_window->max_interval_input_octets)
++    current_window->max_interval_input_octets = stats->interval_input_octets;
++
++  if(stats->interval_output_octets > current_window->max_interval_output_octets)
++    current_window->max_interval_output_octets = stats->interval_output_octets;
++
++  stats->interval_start_time = now;
++  stats->interval_input_octets = 0;
++  stats->interval_output_octets = 0;
++}
++
++/*
++ * ms between start and end
++ */
++u_int64_t
++timespec_ms_diff(struct timespec start, struct timespec end) {
++    u_int64_t ms_difference = 0;
++    ms_difference += (end.tv_sec-start.tv_sec)*1000;
++    ms_difference += (end.tv_nsec-start.tv_nsec)/1.0e6;
++    return ms_difference;
++}
++
++/**
++ * xwf_tc_quota_enforce_interval()
++ * Enforce allowed quota recieved from RADIUS for specific TC
++ **/
++static int
++xwf_tc_quota_enforce_interval(struct xwf_session *xwf_s, int tc) {
++  uint64_t totalbytesused = xwf_s->tc[tc].tc_stats.input_octets +
++			    xwf_s->tc[tc].tc_stats.output_octets;
++  uint64_t maxtotalbytes =  xwf_s->tc[tc].max_total_octets;
++
++  if (maxtotalbytes && (totalbytesused > maxtotalbytes)) {
++    xwf_s->tc[tc].flags &= ~XWF_TC_AUTHORIZED;
++    return XWF_DATA_QUOTA_EXCEEDED;
++  }
++
++  return 0;
++}
++
++/**
++ * xwf_quota_enforce_interval()
++ * Enforce allowed quota recieved from RADIUS and send acct update req if needed
++ **/
++int
++xwf_quota_enforce_interval(struct xwf_global_info *gi,
++			   struct app_conn_t *appconn) {
++  int send_acct = 0;
++  int tc = 0;
++
++  if (!gi || !appconn)
++    return -EINVAL;
++
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    if (!gi->tc[tc].valid ||
++	!(appconn->s_state.xwf_s.tc[tc].flags & XWF_TC_AUTHORIZED))
++      continue;
++    send_acct += xwf_tc_quota_enforce_interval(&appconn->s_state.xwf_s, tc);
++  }
++
++  if (send_acct) {
++#ifdef ENABLE_XWF_SDN_OOB
++    char out_buffer[MAX_MSG_SIZE] = { 0 };
++    struct chilli_cmdif_msg* out_msg = (struct chilli_cmdif_msg*) out_buffer;
++    out_msg->cmd_code = XWFSW_CHILLI_AUTH;
++    struct chilli_auth_msg* auth_msg = (struct chilli_auth_msg*) out_msg->data;
++    memcpy(auth_msg->hismac, appconn->hismac, PKT_ETH_ALEN);
++    auth_msg->xwf_tc_authorized =
++        appconn->s_state.xwf_s.tc[gi->xwf_tc_idx].flags & XWF_TC_AUTHORIZED;
++    auth_msg->fbs_tc_authorized =
++        appconn->s_state.xwf_s.tc[gi->fbs_tc_idx].flags & XWF_TC_AUTHORIZED;
++    auth_msg->internet_tc_authorized =
++        appconn->s_state.xwf_s.tc[XWF_INTERNET_TC_IDX].flags & XWF_TC_AUTHORIZED;
++    mq_send(qd_xwfsw, out_buffer, MAX_MSG_SIZE, 0);
++#endif
++    acct_req(ACCT_USER, appconn, RADIUS_STATUS_TYPE_INTERIM_UPDATE);
++  }
++
++  return 0;
++}
++
++/**
++ * domain_contains()
++ * Returns 1 if the question is contained in the given domain, else 0.
++ **/
++#ifdef DOCKER_ENV
++static int
++#else
++static inline int
++#endif
++domain_contains(char *dom, char *qst) {
++  size_t qst_len;
++  size_t dom_len;
++
++  if (!dom || !qst)
++    return 0;
++
++  dom_len = strlen(dom);
++  qst_len = strlen(qst);
++  if (!dom_len || !qst_len || (qst_len < dom_len))
++    return 0;
++
++  //if lengths are equal do a simple string comparison
++  if (qst_len == dom_len)
++    return (strcmp(dom, qst) == 0);
++
++  /*
++   * if the question is longer than the domain:
++   * check that the domain is a suffix of the question.
++   * make sure that there is a '.' in the start of the suffix.
++   */
++  if ((dom[0] == '.' || qst[qst_len - dom_len - 1] == '.') &&
++      !strcmp(dom, qst + qst_len - dom_len))
++    return 1;
++
++  return 0;
++}
++
++/**
++ * xwf_dns_q_match()
++ * Returns which TCs domains list contains the DNS question
++ **/
++void
++xwf_dns_q_match(struct xwf_global_info *gi, char *qst, int *tc_match) {
++  int tc;
++  int di;
++
++  if (!qst || !tc_match)
++    return;
++
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    if (!gi->tc[tc].valid)
++      continue;
++    for (di = 0; di < gi->tc[tc].dnum; di++) {
++      if (_options.debug)
++        syslog(LOG_DEBUG, "%s(%d): checking %s [%s]", __FUNCTION__, __LINE__,
++	       gi->tc[tc].darr[di], qst);
++
++      if (domain_contains(gi->tc[tc].darr[di], qst)) {
++        if (_options.debug)
++          syslog(LOG_DEBUG, "%s(%d): matched %s [%s]",
++		 __FUNCTION__, __LINE__, gi->tc[tc].darr[di], qst);
++        tc_match[tc] = 1;
++      }
++    }
++  }
++}
++
++/**
++ * xwf_add_A_record_to_tc()
++ * Add relevant ip address from DNS A record to the tc ip passthroughs list
++ **/
++void
++xwf_add_A_record_to_tc(struct xwf_global_info *gi, int tc, uint8_t *p) {
++  struct in_addr reqaddr;
++  pass_through pt;
++
++  if (!gi || !p)
++    return;
++
++  memcpy(&reqaddr.s_addr, p, sizeof(reqaddr));
++  memset(&pt, 0, sizeof(pass_through));
++  pt.mask.s_addr = 0xffffffff;
++  pt.host = reqaddr;
++
++  pass_through_add(gi->tc[tc].pass_throughs, XWF_MAX_PT_NUM,
++		   &gi->tc[tc].num_pass_throughs, &pt, 0
++#ifdef HAVE_PATRICIA
++		   , 0
++#endif
++		   );
++#ifdef ENABLE_XWF_SDN_OOB
++  ip2tc_ptree_add(gi, &gi->pt, pt.host.s_addr, pt.mask.s_addr, tc);
++#else
++  ip2tc_ptree_add(&gi->pt, pt.host.s_addr, pt.mask.s_addr, tc);
++#endif
++}
++
++/**
++ * xwf_get_authorized_tc()
++ * Return the first authorized tc (sorted by conf file precedence)
++ * that contains the ip address (including internet tc)
++ **/
++int
++xwf_get_authorized_tc(struct xwf_global_info *gi, struct xwf_session *xwf_s,
++		      struct pkt_iphdr_t *iph, int dst) {
++  uint32_t addr = dst ? iph->daddr : iph->saddr;
++  char tc_arr[XWF_MAX_TC_NUM] = {0};
++  int authorized_tc = -1;
++  int tc = 0;
++
++  if (!gi || !xwf_s)
++    return -EINVAL;
++
++  ip2tc_ptree_get(&gi->pt, addr, tc_arr);
++
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    if (!gi->tc[tc].valid || !tc_arr[tc])
++      continue;
++    if (xwf_s->tc[tc].flags & XWF_TC_AUTHORIZED) {
++      authorized_tc = tc;
++      break;
++    }
++  }
++
++  return authorized_tc;
++}
++
++/**
++ * xwf_apply_auth_tc_conf()
++ * Apply XWF TC based authorizations got from RADIUS
++ **/
++
++#ifdef ENABLE_XWF_SDN_OOB
++static int
++xwf_apply_auth_tc_conf(struct xwf_global_info *gi, struct xwf_session* xwf_s,
++                       struct radius_attr_t *xwf_avp, uint8_t *hismac) {
++#else
++static int
++xwf_apply_auth_tc_conf(struct xwf_global_info *gi, struct xwf_session* xwf_s,
++                       struct radius_attr_t *xwf_avp) {
++#endif
++
++  struct xwf_tlv_t *tmp_tlv = NULL;
++  char tc_name[MAX_TC_NAME_SIZE];
++  size_t offset = 0;
++  int tc_cnt = 0;
++  int tc = 0;
++
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    if (xwf_s->tc[tc].flags & XWF_TC_ACCOUNTED)
++      xwf_s->tc[tc].flags |= XWF_TC_MARKED;
++  }
++
++  while(!xwf_getnexttlv((struct xwf_multi_tlv_vsa_t *)xwf_avp, &tmp_tlv,
++		       XWF_AUTHORIZE_TLV_CLASS_NAME, 0, &offset)) {
++    memcpy(tc_name, tmp_tlv->v.t, tmp_tlv->l - XWF_TLV_HDRSIZE);
++    tc_name[tmp_tlv->l - XWF_TLV_HDRSIZE] = 0;
++    for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++      if (!strcmp(gi->tc[tc].tc_name,tc_name) &&
++          !xwf_getnexttlv((struct xwf_multi_tlv_vsa_t *)xwf_avp, &tmp_tlv,
++			  XWF_AUTHORIZE_TLV_BYTES_LEFT, 0, &offset)) {
++        if (_options.debug)
++          syslog (LOG_DEBUG, "%s(%d): Authorizing TC %s with %"PRIu64"B quota",
++		  __FUNCTION__, __LINE__, tc_name,
++		  ntohll(tmp_tlv->v.li));
++        xwf_s->tc[tc].max_total_octets =
++          (ntohll(tmp_tlv->v.li) ? (ntohll(tmp_tlv->v.li) +
++                                    xwf_s->tc[tc].last_accounted_total_octets) :
++                                   0);
++        xwf_s->tc[tc].flags |= XWF_TC_AUTHORIZED;
++        xwf_s->tc[tc].flags |= XWF_TC_ACCOUNTED;
++        xwf_s->tc[tc].flags &= ~XWF_TC_MARKED;
++        tc_cnt++;
++      }
++    }
++  }
++
++  for (tc = 0; tc < XWF_MAX_TC_NUM; tc++) {
++    if (xwf_s->tc[tc].flags & XWF_TC_MARKED) {
++      xwf_s->tc[tc].flags &= ~XWF_TC_MARKED;
++      xwf_s->tc[tc].flags &= ~XWF_TC_AUTHORIZED;
++      xwf_s->tc[tc].flags &= ~XWF_TC_ACCOUNTED;
++    }
++  }
++
++#ifdef ENABLE_XWF_SDN_OOB
++  char out_buffer[MAX_MSG_SIZE] = {0};
++  struct chilli_cmdif_msg* msg = (struct chilli_cmdif_msg*)out_buffer;
++  msg->cmd_code = XWFSW_CHILLI_AUTH;
++  struct chilli_auth_msg* auth_msg = (struct chilli_auth_msg*)msg->data;
++  memcpy(auth_msg->hismac, hismac, PKT_ETH_ALEN);
++  auth_msg->xwf_tc_authorized = xwf_s->tc[gi->xwf_tc_idx].flags & XWF_TC_AUTHORIZED;
++  auth_msg->fbs_tc_authorized = xwf_s->tc[gi->fbs_tc_idx].flags & XWF_TC_AUTHORIZED;
++  auth_msg->internet_tc_authorized = xwf_s->tc[XWF_INTERNET_TC_IDX].flags & XWF_TC_AUTHORIZED;
++  mq_send (qd_xwfsw, out_buffer, MAX_MSG_SIZE, 0);
++#endif
++
++  return tc_cnt;
++}
++
++/**
++ * xwf_validate_attributes()
++ * Validate that we don't mix Lite & Full protocols attributes
++ **/
++static int
++xwf_validate_attributes(struct xwf_global_info *gi,struct radius_packet_t *pack) {
++  struct radius_attr_t *attr = NULL;
++
++  if (gi->flags & XWF_TC_MODE_ENABLED) {
++    if (!radius_getattr (pack, &attr, RADIUS_ATTR_VENDOR_SPECIFIC,
++  		       RADIUS_VENDOR_XWF,
++  		       RADIUS_ATTR_XWF_ALLOWED_QUOTA, 0) ||
++	!radius_getattr (pack, &attr,
++			       RADIUS_ATTR_VENDOR_SPECIFIC,
++			       RADIUS_VENDOR_XWF,
++			       RADIUS_ATTR_XWF_RESTRICT_TO_WALLED_GARDEN,
++			       0)) {
++      return -1;
++    }
++  }
++  else {
++    if (!radius_getattr (pack, &attr,
++  		       RADIUS_ATTR_VENDOR_SPECIFIC,
++  		       RADIUS_VENDOR_XWF,
++  		       RADIUS_ATTR_XWF_AUTHORIZE_TRAFFIC_CLASSES,
++  		       0)) {
++      return -1;
++    }
++  }
++
++  return 0;
++}
++
++/*
++ * This function is called after each radius response to update the
++ * XWF functionality parameters.
++ * This function is called after finishing the config_radius_session function
++ * original behavior to ensure code sharing for standard attributes and also to
++ * make sure we set the parameters defaults.
++ */
++void
++xwf_config_radius_session(struct xwf_global_info *gi,
++			  struct session_params *params,
++			  struct radius_packet_t *pack,
++			  struct app_conn_t *appconn,
++			  int reconfig) {
++  struct radius_attr_t *attr = NULL;
++  int tc_cnt = 0;
++
++  /* AP XWF mode check */
++  if (xwf_validate_attributes(gi, pack)) {
++    syslog (LOG_ERR,
++	  "%s(%d): AP XWF mode (%s mode) mismatch with packet XWF attributes",
++	  __FUNCTION__, __LINE__,
++	  (gi->flags & XWF_TC_MODE_ENABLED) ? "Full" : "Lite");
++    dnprot_terminate(appconn);
++    return;
++  }
++
++  /* XWF Captive portal Token */
++  if (!radius_getattr (pack, &attr, RADIUS_ATTR_VENDOR_SPECIFIC,
++		       RADIUS_VENDOR_XWF,
++		       RADIUS_ATTR_XWF_CAPTIVE_PORTAL_TOKEN, 0)) {
++    memcpy(appconn->s_state.xwf_s.xwf_cp_token, attr->v.t, attr->l - 2);
++    appconn->s_state.xwf_s.xwf_cp_token[attr->l - 2] = 0;
++  }
++
++  /* XWF Authorize TC */
++  if (!radius_getattr (pack, &attr,
++		       RADIUS_ATTR_VENDOR_SPECIFIC,
++		       RADIUS_VENDOR_XWF,
++		       RADIUS_ATTR_XWF_AUTHORIZE_TRAFFIC_CLASSES,
++		       0)) {
++#ifdef ENABLE_XWF_SDN_OOB
++    tc_cnt = xwf_apply_auth_tc_conf(gi, &appconn->s_state.xwf_s, attr, appconn->hismac);
++#else
++    tc_cnt = xwf_apply_auth_tc_conf(gi, &appconn->s_state.xwf_s, attr);
++#endif
++    if (_options.debug)
++      syslog (LOG_DEBUG,
++	      "%s(%d): Received RADIUS Access-Accept/CoA-request with %d traffic classes",
++	      __FUNCTION__, __LINE__, tc_cnt);
++  }
++
++  /* XWF Allowed Quota */
++  if (!radius_getattr (pack, &attr, RADIUS_ATTR_VENDOR_SPECIFIC,
++		       RADIUS_VENDOR_XWF,
++		       RADIUS_ATTR_XWF_ALLOWED_QUOTA, 0)) {
++    if (_options.debug)
++      syslog (LOG_DEBUG, "Recieved new quota %u", ntohl(attr->v.i));
++    params->maxtotaloctets = ((uint64_t)ntohl(attr->v.i) +
++			      appconn->s_state.xwf_s.last_accounted_total_octets);
++  }
++}
++
++/*********************************************************
++ * radius callback functions (response from radius server)
++ *********************************************************/
++/* Radius callback when access accept/reject/challenge has been received */
++int
++cb_xwf_radius_auth_conf(struct radius_t *radius,
++			struct radius_packet_t *pack,
++			struct radius_packet_t *pack_req, void *cbp) {
++  struct app_conn_t *appconn = (struct app_conn_t*) cbp;
++  struct radius_attr_t *wattr = NULL;
++  struct in_addr hismask;
++  struct in_addr hisip;
++#ifdef ENABLE_EAPOL
++  struct radius_attr_t *eapattr = NULL;
++  int instance = 0;
++#endif
++
++  if (!appconn) {
++    syslog(LOG_ERR,"No peer protocol defined");
++    return 0;
++  }
++
++  /* Initialize */
++  appconn->s_state.redir.statelen = 0;
++  hisip.s_addr = hismask.s_addr = 0;
++
++  if (!pack) { /* Timeout */
++    syslog(LOG_ERR, "RADIUS request id=%d timed out for session %s",
++           pack_req ? pack_req->id : -1,
++           appconn->s_state.sessionid);
++    if (_options.noradallow) {
++      session_param_defaults(&appconn->s_params);
++      return upprot_getip(appconn, &appconn->reqip, 0);
++    }
++    return dnprot_reject(appconn);
++  }
++
++#if(_debug_)
++  if (_options.debug)
++    syslog(LOG_DEBUG, "%s(%d): Received RADIUS response id=%d", __FUNCTION__, __LINE__, pack->id);
++#endif
++
++  hisip.s_addr = appconn->reqip.s_addr;
++
++  /* ACCESS-REJECT */
++  if (pack->code == RADIUS_CODE_ACCESS_REJECT) {
++    if (_options.debug)
++      syslog(LOG_DEBUG, "%s(%d): Received RADIUS Access-Reject", __FUNCTION__, __LINE__);
++    config_radius_session(&appconn->s_params, pack, appconn, 0);
++    return dnprot_reject(appconn);
++  }
++
++#ifdef ENABLE_EAPOL
++  /* Extract EAP-Message if present in RADIUS */
++  appconn->challen = 0;
++  do {
++    eapattr=NULL;
++    if (!radius_getattr(pack, &eapattr, RADIUS_ATTR_EAP_MESSAGE, 0, 0, instance++)) {
++      if ((appconn->challen + eapattr->l-2) > MAX_EAP_LEN) {
++        syslog(LOG_INFO, "EAP message too long %zu %d",
++                    appconn->challen, (int) eapattr->l-2);
++        return dnprot_reject(appconn);
++      }
++      memcpy(appconn->chal+appconn->challen, eapattr->v.t, eapattr->l-2);
++      appconn->challen += eapattr->l-2;
++    }
++  } while (eapattr);
++
++  /* ACCESS-CHALLENGE */
++  if (pack->code == RADIUS_CODE_ACCESS_CHALLENGE) {
++    if (_options.debug)
++      syslog(LOG_DEBUG, "%s(%d): Received RADIUS Access-Challenge", __FUNCTION__, __LINE__);
++
++    if (!appconn->challen) {
++      syslog(LOG_INFO, "No EAP message found");
++      return dnprot_reject(appconn);
++    }
++
++    return dnprot_challenge(appconn);
++  }
++#endif
++
++  if (pack->code != RADIUS_CODE_ACCESS_ACCEPT) {
++    syslog(LOG_ERR, "Unknown RADIUS code");
++    return dnprot_reject(appconn);
++  }
++
++  /* ACCESS-ACCEPT XWF Restrict to Walled-garden */
++  if (!radius_getattr (pack, &wattr,
++		       RADIUS_ATTR_VENDOR_SPECIFIC,
++		       RADIUS_VENDOR_XWF,
++		       RADIUS_ATTR_XWF_RESTRICT_TO_WALLED_GARDEN,
++		       0) &&
++      ntohl(wattr->v.i) == RADIUS_VALUE_XWF_RESTRICT_TO_WALLED_GARDEN_TRUE) {
++    if (_options.debug)
++      syslog (
++	  LOG_DEBUG,
++	  "%s(%d): Received RADIUS Access-Accept with Walled garden restriction",
++	  __FUNCTION__, __LINE__);
++    config_radius_session (&appconn->s_params, pack, appconn, 0);
++    acct_req(ACCT_USER, appconn, RADIUS_STATUS_TYPE_START);
++    return dnprot_hold (appconn);
++  }
++
++  /* ACCESS-ACCEPT */
++#if(_debug_)
++  if (_options.debug)
++    syslog(LOG_DEBUG, "%s(%d): Received RADIUS Access-Accept", __FUNCTION__, __LINE__);
++#endif
++
++  appconn->s_state.redir.classlen = 0;
++
++  config_radius_session(&appconn->s_params, pack, appconn, 0);
++  acct_req(ACCT_USER, appconn, RADIUS_STATUS_TYPE_START);
++  return upprot_getip(appconn, &hisip, &hismask);
++}
++
++
++#ifdef ENABLE_COA
++/* XWF Radius callback when coa or disconnect request has been received */
++int
++cb_xwf_radius_coa_ind(struct radius_t *radius, struct radius_packet_t *pack,
++		      struct sockaddr_in *peer) {
++  struct radius_attr_t *uattr = NULL;
++  struct radius_attr_t *cattr = NULL;
++  struct radius_attr_t *sattr = NULL;
++  struct radius_packet_t radius_pack;
++  struct radius_attr_t *attr = NULL;
++  int calling_st_id_found = 0;
++  struct app_conn_t *appconn;
++  int session_id_found = 0;
++  int username_found = 0;
++  int authorize = 0;
++  int found = 0;
++  int iscoa = 0;
++
++  if (pack->code != RADIUS_CODE_DISCONNECT_REQUEST &&
++      pack->code != RADIUS_CODE_COA_REQUEST) {
++    syslog(LOG_ERR, "Radius packet not supported: %d,\n", pack->code);
++    return -1;
++  }
++
++  iscoa = pack->code == RADIUS_CODE_COA_REQUEST;
++
++  /* Get Username or Session-id */
++  if (radius_getattr (pack, &uattr, RADIUS_ATTR_USER_NAME, 0, 0, 0)
++      && radius_getattr (pack, &cattr, RADIUS_ATTR_CALLING_STATION_ID, 0, 0, 0)
++      && radius_getattr (pack, &sattr, RADIUS_ATTR_ACCT_SESSION_ID, 0, 0, 0)) {
++    syslog (LOG_WARNING,
++	    "Username/Session-id/Calling-Station-ID must be included in coa disconnect/request");
++    return -1;
++  }
++
++  for (appconn = firstusedconn; appconn; appconn = appconn->next) {
++
++    if (!appconn->inuse) {
++      syslog (LOG_ERR, "Connection with inuse == 0!");
++    }
++    username_found = (uattr) &&
++		     (strlen (appconn->s_state.redir.username) == uattr->l - 2) &&
++		     (!memcmp (appconn->s_state.redir.username, uattr->v.t,
++			       uattr->l - 2));
++    calling_st_id_found = (cattr) &&
++			  (strlen (appconn->s_state.redir.username) == cattr->l - 2) &&
++			  (!memcmp (appconn->s_state.redir.username, cattr->v.t,
++				    cattr->l - 2));
++    session_id_found = (sattr) &&
++		       (strlen (appconn->s_state.sessionid) == sattr->l - 2) &&
++		       (!strncasecmp (appconn->s_state.sessionid, (char*) sattr->v.t,
++				      sattr->l - 2));
++
++    if (username_found || calling_st_id_found || session_id_found) {
++      if (iscoa) {
++        if (_options.debug)
++          syslog (LOG_DEBUG, "%s(%d): Received CoA request on session %s",
++		  __FUNCTION__, __LINE__, appconn->s_state.sessionid);
++        if (!radius_getattr (pack, &attr,
++			     RADIUS_ATTR_VENDOR_SPECIFIC,
++			     RADIUS_VENDOR_XWF,
++			     RADIUS_ATTR_XWF_RESTRICT_TO_WALLED_GARDEN,
++			     0)) {
++          uint32_t v = ntohl(attr->v.i);
++          switch (v)
++            {
++            case RADIUS_VALUE_XWF_RESTRICT_TO_WALLED_GARDEN_FALSE:
++              if (!appconn->s_state.authenticated)
++                authorize = 1;
++              if (_options.debug)
++                syslog (LOG_DEBUG, "%s(%d): Releasing walled garden restriction from session %s", __FUNCTION__, __LINE__,
++			appconn->s_state.sessionid);
++              break;
++            case RADIUS_VALUE_XWF_RESTRICT_TO_WALLED_GARDEN_TRUE:
++              if (appconn->s_state.authenticated)
++                dnprot_terminate(appconn);
++              if (_options.debug)
++                syslog (LOG_DEBUG, "%s(%d): Applying walled garden restriction on session %s", __FUNCTION__, __LINE__,
++			appconn->s_state.sessionid);
++              break;
++            }
++        }
++      }
++      else {
++#ifdef ENABLE_XWF_SDN_OOB
++        char out_buffer[MAX_MSG_SIZE] = { 0 };
++        struct chilli_cmdif_msg* out_msg = (struct chilli_cmdif_msg*) out_buffer;
++        out_msg->cmd_code = XWFSW_CHILLI_DELETE_CLIENT;
++        struct chilli_client_desc_msg* desc_msg = (struct chilli_client_desc_msg*) out_msg->data;
++        memcpy(desc_msg->hismac, appconn->hismac, PKT_ETH_ALEN);
++        mq_send(qd_xwfsw, out_buffer, MAX_MSG_SIZE, 0);
++#endif
++        if (_options.debug)
++          syslog (LOG_DEBUG, "%s(%d): Received CoA disconnect on session %s",
++                  __FUNCTION__, __LINE__, appconn->s_state.sessionid);
++        terminate_appconn (appconn, RADIUS_TERMINATE_CAUSE_USER_REQUEST);
++      }
++
++      config_radius_session (&appconn->s_params, pack, appconn, 1);
++
++      if (authorize) {
++        dnprot_accept (appconn);
++      }
++
++      found = 1;
++    }
++  }
++
++  if (found) {
++    if (radius_default_pack(radius, &radius_pack,
++			    iscoa ? RADIUS_CODE_COA_ACK : RADIUS_CODE_DISCONNECT_ACK)) {
++      syslog(LOG_ERR, "radius_default_pack() failed");
++      return -1;
++    }
++  }
++  else {
++    if (_options.debug)
++      syslog(LOG_DEBUG, "%s(%d): Received CoA on unknown session, sending NACK\n", __FUNCTION__, __LINE__);
++    if (radius_default_pack(radius, &radius_pack,
++			    iscoa ? RADIUS_CODE_COA_NAK : RADIUS_CODE_DISCONNECT_NAK)) {
++      syslog(LOG_ERR, "radius_default_pack() failed");
++      return -1;
++    }
++  }
++
++  radius_pack.id = pack->id;
++  (void) radius_coaresp(radius, &radius_pack, peer, pack->authenticator);
++
++  return 0;
++}
++#endif
++
++#ifdef ENABLE_XWF_SDN_OOB
++static void xwfsw_cmd_handler(struct xwf_global_info *gi, char *buf, size_t buf_size) {
++  struct chilli_cmdif_msg *msg = (struct chilli_cmdif_msg *) buf;
++  struct chilli_dns_pkt* pkt = NULL;
++  char out_buffer[MAX_MSG_SIZE] = { 0 };
++  struct chilli_cmdif_msg* out_msg = (struct chilli_cmdif_msg*) out_buffer;
++  struct chilli_echo_resp *resp = (struct chilli_echo_resp *) out_msg->data;
++  struct chilli_bypass_mac_list *maclist =
++      (struct chilli_bypass_mac_list *) out_msg->data;
++  struct chilli_acct_msg* acct_msg = (struct chilli_acct_msg*) msg->data;
++  struct chilli_client_desc_msg *client = (struct chilli_client_desc_msg *) msg->data;
++  struct app_conn_t *appconn = NULL;
++  int i = 0;
++
++  switch (msg->cmd_code) {
++    case XWFSW_CHILLI_ECHO_REQ_CMD:
++      out_msg->cmd_code = XWFSW_CHILLI_ECHO_RESP_CMD;
++      resp->uam_ip.s_addr = _options.uamlisten.s_addr;
++      resp->uam_port = htons(_options.uamport);
++      mq_send(qd_xwfsw, out_buffer, MAX_MSG_SIZE, 0);
++      memset(out_buffer, 0, MAX_MSG_SIZE);
++      out_msg->cmd_code = XWFSW_CHILLI_BYPASS_MAC_LIST;
++      for (i=0; i<_options.macoklen; i++) {
++        memcpy(maclist->mac_list[i].mac, _options.macok[i], PKT_ETH_ALEN);
++      }
++      maclist->list_len = _options.macoklen;
++      mq_send(qd_xwfsw, out_buffer, MAX_MSG_SIZE, 0);
++      break;
++    case XWFSW_CHILLI_NEW_CLIENT:
++      if (dhcp_reserve_ip(client->hismac, &client->hisip)) {
++        chilli_getconn(&appconn, client->hisip.s_addr, 0, 0);
++        if (!gi || !appconn || !appconn->s_state.xwf_s.tc)
++          break;
++        out_msg->cmd_code = XWFSW_CHILLI_AUTH;
++        struct chilli_auth_msg* auth_msg = (struct chilli_auth_msg*) out_msg->data;
++        memcpy(auth_msg->hismac, client->hismac, PKT_ETH_ALEN);
++        auth_msg->xwf_tc_authorized =
++            appconn->s_state.xwf_s.tc[gi->xwf_tc_idx].flags & XWF_TC_AUTHORIZED;
++        auth_msg->fbs_tc_authorized =
++            appconn->s_state.xwf_s.tc[gi->fbs_tc_idx].flags & XWF_TC_AUTHORIZED;
++        auth_msg->internet_tc_authorized =
++            appconn->s_state.xwf_s.tc[XWF_INTERNET_TC_IDX].flags & XWF_TC_AUTHORIZED;
++        mq_send(qd_xwfsw, out_buffer, MAX_MSG_SIZE, 0);
++      }
++      break;
++    case XWFSW_CHILLI_ACCT:
++      chilli_getconn(&appconn, acct_msg->hisip.s_addr, 0, 0);
++      if (!gi || !appconn || !appconn->s_state.xwf_s.tc)
++        break;
++      appconn->s_state.xwf_s.tc[gi->xwf_tc_idx].tc_stats.output_packets =
++          acct_msg->xwf_tc_acct.outpkts;
++      appconn->s_state.xwf_s.tc[gi->xwf_tc_idx].tc_stats.output_octets =
++          acct_msg->xwf_tc_acct.outbytes;
++      appconn->s_state.xwf_s.tc[gi->xwf_tc_idx].tc_stats.input_packets =
++          acct_msg->xwf_tc_acct.inpkts;
++      appconn->s_state.xwf_s.tc[gi->xwf_tc_idx].tc_stats.input_octets = acct_msg
++          ->xwf_tc_acct.inbytes;
++
++      appconn->s_state.xwf_s.tc[gi->fbs_tc_idx].tc_stats.output_packets =
++          acct_msg->fbs_tc_acct.outpkts;
++      appconn->s_state.xwf_s.tc[gi->fbs_tc_idx].tc_stats.output_octets =
++          acct_msg->fbs_tc_acct.outbytes;
++      appconn->s_state.xwf_s.tc[gi->fbs_tc_idx].tc_stats.input_packets =
++          acct_msg->fbs_tc_acct.inpkts;
++      appconn->s_state.xwf_s.tc[gi->fbs_tc_idx].tc_stats.input_octets = acct_msg
++          ->fbs_tc_acct.inbytes;
++
++      appconn->s_state.xwf_s.tc[XWF_INTERNET_TC_IDX].tc_stats.output_packets =
++          acct_msg->internet_tc_acct.outpkts;
++      appconn->s_state.xwf_s.tc[XWF_INTERNET_TC_IDX].tc_stats.output_octets =
++          acct_msg->internet_tc_acct.outbytes;
++      appconn->s_state.xwf_s.tc[XWF_INTERNET_TC_IDX].tc_stats.input_packets =
++          acct_msg->internet_tc_acct.inpkts;
++      appconn->s_state.xwf_s.tc[XWF_INTERNET_TC_IDX].tc_stats.input_octets =
++          acct_msg->internet_tc_acct.inbytes;
++      break;
++    case XWFSW_CHILLI_DNS_PACKET:
++      pkt = (struct chilli_dns_pkt *) msg->data;
++      dhcp_dns(NULL, pkt->buf, (size_t*) &pkt->buf_len, pkt->isReq);
++      break;
++    default:
++      syslog(LOG_ERR, "%s(%d): UNKNOWN XWFSW CMD", __FUNCTION__, __LINE__);
++    }
++}
++
++void
++xwfsw_select(struct xwf_global_info *gi) {
++  struct mq_attr attr;
++  struct mq_attr old_attr;
++  char in_buffer[MSG_BUFFER_SIZE] ={0};
++  unsigned int prio = 1;
++
++  mq_getattr(qd_chilli, &attr);
++  if (gi && attr.mq_curmsgs != 0) {
++    // First set the queue to not block any calls
++    attr.mq_flags = O_NONBLOCK;
++    mq_setattr(qd_chilli, &attr, &old_attr);
++    while (mq_receive(qd_chilli, in_buffer, MSG_BUFFER_SIZE, &prio) != -1) {
++      xwfsw_cmd_handler(gi, in_buffer, MSG_BUFFER_SIZE);
++    }
++    // Now restore the attributes
++    mq_setattr(qd_chilli, &old_attr, 0);
++  }
++}
++#endif
+Index: coova-chilli-1.4/src/xwf.h
+===================================================================
+--- /dev/null
++++ coova-chilli-1.4/src/xwf.h
+@@ -0,0 +1,319 @@
++/* -*- mode: c; c-basic-offset: 2 -*- */
++/*
++ * Copyright (C) 2017 Mohamad Haj Yahia (Facebook LTD) <mhy@fb.com>
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 2 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ *
++ */
++
++#ifndef _XWF_H
++#define _XWF_H
++
++#include "bstrlib.h"
++#include "garden.h"
++#include "chilli_limits.h"
++
++/* Forward declaration */
++struct app_conn_t;
++struct session_params;
++struct radius_t;
++struct radius_packet_t;
++
++/* Defines */
++#define MAX_TC_NAME_SIZE 32
++#define XWF_MAX_TC_NUM 4
++#define XWF_MAX_PT_NUM 200
++#define XWF_MAX_DOMAIN_NUM 128
++#define XWF_MULTI_TLV_VSA_HDRSIZE 2
++#define XWF_TLV_HDRSIZE 2
++#define XWF_HIRES_INTERVAL_SIZE_MS _options.xwfhiresintervalms
++#define XWF_HIRES_WINDOW_SIZE_MS 60000
++#define XWF_TCP_CONN_HASH_LOGSIZE 7
++#define XWF_TCP_CONN_HASHMASK (1 << XWF_TCP_CONN_HASH_LOGSIZE) - 1
++#define XWF_TCP_CONN_MONITOR_TIMEOUT_SEC 3600
++#define XWF_INTERNET_TC_IDX XWF_MAX_TC_NUM-1
++#define XWF_GUEST_ACCESS_OPNAME "guest-access"
++#define XWF_TRAFFIC_CLASS_OPNAME "traffic-class"
++#define XWF_TC_NAME_OPNAME "name"
++#define XWF_INTERNET_DEF_TC_NAME "internet"
++#define XWF_PERMIT_OPNAME "permit"
++#define XWF_INTERNET_TC_NAME_OPNAME "internet"
++#define XWF_ENABLE_TC_MODE_OPNAME "enable_tc_mode"
++#define URL_PROTOCOL_DELIMITER "://"
++#define htonll(x) ((1==htonl(1)) ? (x) : ((uint64_t)htonl((x) & 0xFFFFFFFF) << 32) | htonl((x) >> 32))
++#define ntohll(x) ((1==ntohl(1)) ? (x) : ((uint64_t)ntohl((x) & 0xFFFFFFFF) << 32) | ntohl((x) >> 32))
++#define IS_XWF_FULL_MODE(gi) _options.xwfmode && gi && (gi->flags & XWF_TC_MODE_ENABLED)
++#define IS_XWF_PII_MODE(gi) _options.xwfpiimode && IS_XWF_FULL_MODE(gi)
++#define XWF_DATA_QUOTA_EXCEEDED 1
++
++#ifdef ENABLE_XWF_SDN_OOB
++
++#define CHILLI_SDN_QUEUE_NAME   "/chilli_sdn_queue"
++#define XWFSW_SDN_QUEUE_NAME   "/xwfsw_sdn_queue"
++#define QUEUE_PERMISSIONS 0660
++#define MAX_MESSAGES 150
++#define MAX_MSG_SIZE 1514
++#define MSG_BUFFER_SIZE MAX_MSG_SIZE + 10
++
++enum {
++  XWFSW_CHILLI_ECHO_REQ_CMD = 0,
++  XWFSW_CHILLI_ECHO_RESP_CMD,
++  XWFSW_CHILLI_NEW_CLIENT,
++  XWFSW_CHILLI_DELETE_CLIENT,
++  XWFSW_CHILLI_ACCT,
++  XWFSW_CHILLI_AUTH,
++  XWFSW_CHILLI_XWF_IP_LIST,
++  XWFSW_CHILLI_FBS_IP_LIST,
++  XWFSW_CHILLI_DNS_PACKET,
++  XWFSW_CHILLI_BYPASS_MAC_LIST,
++};
++
++struct chilli_cmdif_msg {
++    uint8_t            cmd_code;
++    uint16_t           length;
++    uint8_t            pad;
++
++    uint8_t             data[0];
++};
++
++struct chilli_client_desc_msg {
++  uint8_t  hismac[PKT_ETH_ALEN];
++  uint32_t lrn_port;
++  struct in_addr hisip;
++};
++
++struct xwfsw_tc_acct {
++  uint64_t inbytes;
++  uint64_t outbytes;
++  uint64_t inpkts;
++  uint64_t outpkts;
++};
++
++struct chilli_acct_msg {
++  uint8_t  hismac[PKT_ETH_ALEN];
++  struct in_addr hisip;
++  struct xwfsw_tc_acct xwf_tc_acct;
++  struct xwfsw_tc_acct fbs_tc_acct;
++  struct xwfsw_tc_acct internet_tc_acct;
++};
++
++struct chilli_auth_msg {
++  uint8_t  hismac[PKT_ETH_ALEN];
++  uint8_t xwf_tc_authorized;
++  uint8_t fbs_tc_authorized;
++  uint8_t internet_tc_authorized;
++};
++
++struct chilli_passthrough_ip {
++  struct in_addr ip;
++  struct in_addr mask;
++};
++
++struct chilli_dns_pkt {
++  uint8_t        isReq;
++  uint32_t       buf_len;
++  uint8_t buf[0];
++};
++
++struct chilli_echo_resp {
++  struct in_addr uam_ip;
++  uint16_t       uam_port;
++};
++
++struct chilli_ip_list {
++  uint32_t       length;
++  struct in_addr hisip[0];
++};
++
++struct chilli_bypass_mac {
++  uint8_t  mac[PKT_ETH_ALEN];
++};
++
++struct chilli_bypass_mac_list {
++  uint32_t                 list_len;
++  struct chilli_bypass_mac mac_list[0];
++};
++#endif
++
++/* Structures */
++struct xwf_multi_tlv_vsa_t {
++  uint8_t t;   /* type */
++  uint8_t l;   /* length */
++  uint8_t payload[RADIUS_ATTR_VLEN];
++} __attribute__((packed));
++
++struct xwf_tlv_t {
++  uint8_t t;   /* type */
++  uint8_t l;   /* length */
++  union {
++    uint32_t i;
++    uint64_t li;
++    uint8_t  t[RADIUS_ATTR_VLEN];
++  } v;        /* value */
++} __attribute__((packed));
++
++/*
++* For accounting high resolution stats over a window of many intervals.
++* max_interval data comes from the interval with highest throughput
++*/
++struct xwf_tc_hires_window {
++  u_int64_t max_interval_input_octets;
++  u_int64_t max_interval_output_octets;
++  u_int64_t total_input_octets;
++  u_int64_t total_output_octets;
++  u_int64_t non_zero_intervals;
++  struct timespec start_time;
++} __attribute__((packed));
++
++/* For accounting on small intervals (~10ms) */
++struct xwf_tc_hires_stats {
++  u_int64_t interval_input_octets;
++  u_int64_t interval_output_octets;
++  struct xwf_tc_hires_window current_window;
++  struct xwf_tc_hires_window previous_window;
++  struct timespec interval_start_time;
++} __attribute__((packed));
++
++struct xwf_tc_stats {
++  u_int64_t input_octets;
++  u_int64_t output_octets;
++  u_int64_t input_packets;
++  u_int64_t output_packets;
++  struct xwf_tc_hires_stats hires_stats;
++} __attribute__((packed));
++
++/* xwf tc session flags bits */
++enum {
++  XWF_TC_AUTHORIZED = 1 << 0,
++  XWF_TC_ACCOUNTED  = 1 << 1,
++  XWF_TC_MARKED     = 1 << 2,
++};
++
++struct xwf_session_tc {
++  uint32_t flags;
++  uint64_t max_total_octets;
++  uint64_t last_accounted_total_octets;
++  struct xwf_tc_stats tc_stats;
++} __attribute__((packed));
++
++/* Track tcp retransmits for specific connection */
++struct xwf_tcp_conn_monitor {
++  time_t last_activity;
++  uint32_t saddr;
++  uint32_t daddr;
++  uint16_t sport;
++  uint16_t dport;
++  uint32_t seq_max;
++} __attribute__((packed));
++
++/* For total retransmits */
++struct xwf_tcp_retransmit_stats {
++  struct xwf_tcp_conn_monitor connections[1 << XWF_TCP_CONN_HASH_LOGSIZE];
++  uint64_t retransmit_packets;
++  uint64_t sampled_packets;
++  uint64_t total_packets;
++} __attribute__((packed));
++
++struct xwf_session {
++  struct xwf_session_tc tc[XWF_MAX_TC_NUM];
++  struct xwf_tcp_retransmit_stats tcp_retransmit_stats;
++  uint8_t xwf_cp_token[REDIR_USERURLSIZE];
++  /* For lite accounting */
++  uint64_t last_accounted_total_octets;
++} __attribute__((packed));
++
++struct xwf_tc_info {
++  char tc_name[MAX_TC_NAME_SIZE];
++  int valid;
++  char* darr[XWF_MAX_DOMAIN_NUM];
++  uint32_t dnum;
++  pass_through pass_throughs[XWF_MAX_PT_NUM];
++  uint32_t num_pass_throughs;
++};
++
++#define IP2TC_PTREE_LAYER_SIZE 256
++#define IP2TC_PTREE_CHILD_MASK (IP2TC_PTREE_LAYER_SIZE-1)
++#define IP2TC_PTREE_KEY_SHIFT 8
++struct ip2tc_ptreenode {
++  char exist;
++  char tc_arr[XWF_MAX_TC_NUM];
++  struct ip2tc_ptreenode *next_l[IP2TC_PTREE_LAYER_SIZE];
++};
++
++struct ip2tc_ptree {
++  struct ip2tc_ptreenode *root;
++};
++
++/* global info flags bits */
++enum {
++  XWF_TC_MODE_ENABLED = 1 << 0,
++};
++
++struct xwf_global_info { /* put in _options as global var */
++  uint32_t flags;
++  int num_tc; /* Actual traffic classes number */
++  struct xwf_tc_info tc[XWF_MAX_TC_NUM];
++  struct ip2tc_ptree pt; /* ipaddr2tc hashtable */
++#ifdef ENABLE_XWF_SDN_OOB
++  int xwf_tc_idx;
++  int fbs_tc_idx;
++#endif
++};
++
++struct xwf_global_info *xwf_global_info_create(char *conf_filename);
++void xwf_global_info_destroy(struct xwf_global_info *gi);
++void xwf_getinfo(struct xwf_global_info *gi, bstring b);
++struct xwf_tc_hires_window * xwf_get_valid_hires_window(struct xwf_tc_hires_stats *stats);
++void xwf_dns_q_match(struct xwf_global_info *gi, char *qst, int *tc_match);
++void xwf_add_A_record_to_tc(struct xwf_global_info *gi, int tc, uint8_t *p);
++int xwf_quota_enforce_interval(struct xwf_global_info *gi,
++			       struct app_conn_t *appconn);
++int xwf_get_authorized_tc(struct xwf_global_info *gi,
++			  struct xwf_session *xwf_s,
++			  struct pkt_iphdr_t *ipph,
++			  int dst);
++int xwf_add_acct_attrs(struct xwf_global_info *gi,
++		       struct xwf_session* xwf_s,
++		       struct radius_t *radius,
++		       struct radius_packet_t *radius_pack);
++void xwf_config_radius_session(struct xwf_global_info *gi,
++			       struct session_params *params,
++			       struct radius_packet_t *pack,
++			       struct app_conn_t *appconn,
++			       int reconfig);
++void xwf_acct_pkt(struct xwf_global_info *gi,
++		         struct app_conn_t *appconn,
++		         struct pkt_ipphdr_t *ipph,
++		         int dst);
++void xwf_acct_tcp_pkt(struct xwf_tcp_retransmit_stats *stats,
++            struct pkt_ipphdr_t *ipph);
++int xwf_tcp_conn_hash_get(struct pkt_ipphdr_t *ipph,
++            struct xwf_tcp_retransmit_stats *stats,
++            struct xwf_tcp_conn_monitor **hash_entry);
++void xwf_acct_hires(struct xwf_tc_hires_stats *stats, int len, int dst);
++void xwf_record_hires_interval(struct xwf_tc_hires_stats *stats,
++             struct timespec now);
++u_int64_t timespec_ms_diff(struct timespec start, struct timespec end);
++int cb_xwf_radius_auth_conf(struct radius_t *radius,
++			    struct radius_packet_t *pack,
++			    struct radius_packet_t *pack_req, void *cbp);
++#ifdef ENABLE_COA
++int cb_xwf_radius_coa_ind(struct radius_t *radius, struct radius_packet_t *pack,
++			  struct sockaddr_in *peer);
++#endif
++#ifdef ENABLE_XWF_SDN_OOB
++void xwfsw_select(struct xwf_global_info *gi);
++#endif
++
++#endif /*_XWF_H */

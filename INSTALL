@@ -1,0 +1,88 @@
+# OpenWrt packages feed
+
+# This is an OpenWrt "packages"-feed containing FBC packages and patches of exiting packages
+
+# Typical usage is as follows 
+# (the uncommented lines run as shell script should produce a flashable binary with some FBC XWF packages )
+
+#
+# Clone OWRT buildroot, e.g. GL-iNet SDK from github
+# The fbc feed is known to work (i.e. compile) with 
+# the GL-iNet buildroot, and the Onion.io buildroot.
+# We expect any standard OWRT buildroot should work.
+#
+git clone git@github.com:gl-inet/openwrt.git glinet_owrt
+cd glinet_owrt/
+
+#
+# Add the feed for fbc packages (i.e. modified coova-chilli)
+# This feed defines a package definition for coova-chilli which
+# fetches the code for chilli v1.4, and applies the XWF modifications
+# as a patch.
+#
+# Some buildroots may have feed config in file `feeds.conf`
+#
+echo "src-git fbc https://github.com/SimonKinane/fbc_owrt_feed.git" >> feeds.conf.default
+
+#
+# This is currently (2020/06/04) a private repo, and 
+# will require github credentials to update.
+#
+# If 2 factor authentication is enabled in github, 
+# an API token is required. The process is detailed here:
+# https://help.github.com/en/github/authenticating-to-github/creating-a-personal-access-token-for-the-command-line
+#
+# If this were a public repo, I believe the authentiation 
+# and access token would not be required.
+#
+./scripts/feeds update fbc
+
+
+#
+# If coova-chilli is already installed in the buildroot
+# from another feed, it may be removed thusly:
+#
+./scripts/feeds uninstall coova-chilli
+
+#
+# Installing the fbc variant of coova-chilli requires
+# the feed be specifed in the install command.
+#
+./scripts/feeds install -p fbc coova-chilli
+
+#
+# The cooca-chilli package may nedd to be enabled in the build configuration :
+# The make menuconfig location is illustrated below, where a variety of config
+# options are available
+#
+#	Prompt: coova-chilli...... Wireless LAN HotSpot controller (Coova Chilli Version)
+#	   Location:
+#	     -> Network
+#	 (2)   -> Captive Portals
+#
+# make menuconfig
+#
+#
+# Initially a clean buildroot may not have a build configuration.
+# A sample config is included in the feed and can be copied to the
+# default `.config` location
+#
+# Running `make defconfig` at this point is good practice,
+# and known to fix some config dependencies that block 
+# successful build in some buildroots. 
+#
+cp feeds/fbc/GL-MT300N-V2.chilli.config .config
+make defconfig
+
+#
+# Build is invoked with `make`
+# Parallel threads can be launched with e.g. `make -j4`
+# Verbose outbut can be enabled with `make V=99`
+#
+make
+
+#
+# For the example target hardware (GL-MT300N-V2) the
+# output binary image with be under the bin directory
+#
+ls -l bin/targets/ramips/mt76x8/
