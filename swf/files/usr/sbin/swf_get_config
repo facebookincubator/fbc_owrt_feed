@@ -1,0 +1,44 @@
+#!/usr/bin/lua
+http = require("ssl.https")
+json = require("cjson")
+
+local file = io.open("/etc/swf/gateway_token")
+if file then
+    for line in file:lines() do
+	GATEWAY_TOKEN = "FBWIFI:GATEWAY|"..line
+    end
+else
+	print("File is missing ; /etc/swf/gateway_token")
+end
+
+URL="https://api.fbwifi.com/v2.0/gateway"
+body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN.."&fields=config,config_version")
+--print(code)
+--print(headers)
+--for key,value in pairs(headers) do
+--	print(key.." "..value)
+--end
+--print(body)
+
+obj = json.decode(body)
+--table.foreach(obj, print)
+--table.foreach(obj['config'], print)
+
+function save_cert(name, value)
+	local f = assert(io.open("/etc/swf/"..name, "w"))
+	f:write(value)
+	f:close()
+end
+
+function process_redirect(ip)
+	print("TODO: redirect ip("..ip..") -> runtime")
+end
+
+save_cert("https_server_cert", obj['config']['https_server_cert'])
+save_cert("https_server_key", obj['config']['https_server_key'])
+
+table.foreach(obj['config']['host_redirect_ips'], process_redirect)
+table.foreach(obj['config']['host_redirect_ips'], print)
+--table.foreach(obj['config']['traffic_allowlist'], print)
+--table.foreach(obj['config']['cross_origin_allowlist'], print)
+--table.foreach(obj['config']['urls'], print)
