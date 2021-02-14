@@ -30,7 +30,7 @@ function save_cert(name, value)
 	f:close()
 end
 
-function process_redirect(ip)
+function process_redirect(ix, ip)
 	print("TODO: redirect ip("..ip..") -> runtime")
 end
 
@@ -38,7 +38,21 @@ save_cert("https_server_cert", obj['config']['https_server_cert'])
 save_cert("https_server_key", obj['config']['https_server_key'])
 
 table.foreach(obj['config']['host_redirect_ips'], process_redirect)
-table.foreach(obj['config']['host_redirect_ips'], print)
---table.foreach(obj['config']['traffic_allowlist'], print)
---table.foreach(obj['config']['cross_origin_allowlist'], print)
---table.foreach(obj['config']['urls'], print)
+
+function process_traffic_rule(ix, ip)
+	print("TODO: traffic_rule("..tostring(ip)..") -> runtime")
+end
+
+function process_cross_origin_rule(ix, ip)
+	print("TODO: cross_origin_rule("..tostring(ip)..") -> runtime")
+end
+
+function process_url(ix, ip)
+	print("TODO: URL_rule("..tostring(ip)..") -> runtime")
+end
+
+
+table.foreach(obj['config']['traffic_allowlist'], process_traffic_rule)
+table.foreach(obj['config']['cross_origin_allowlist'], process_cross_origin_rule)
+table.foreach(obj['config']['urls'], process_url)
+
