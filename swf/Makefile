@@ -23,7 +23,7 @@ define Package/swf
   SUBMENU:=Captive Portals
   SECTION:=net
   CATEGORY:=Network
-  DEPENDS:=+iptables +luasec +luasocket +uboot-envtools
+  DEPENDS:=+iptables +luasec +luasocket +lighttpd +lighttpd-mod-cgi +luci-base
   TITLE:=Social Wi-Fi by Facebook
   PKGARCH:=all
 endef

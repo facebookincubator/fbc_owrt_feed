@@ -1,0 +1,10 @@
+#!/usr/bin/lua
+require "luci.cacheloader"
+require "luci.sgi.cgi"
+--luci.dispatcher.indexcache = "/tmp/luci-indexcache"
+--luci.sgi.cgi.run()
+print("Content-type: application/json; charset=utf-8")
+print ('\n{"api_version": "2.0","token": "1234","gateway_id": "5678abcdef"}')
+
+print(os.getenv("PATH_INFO"))
+os.execute("set > /tmp/cgi_env")
