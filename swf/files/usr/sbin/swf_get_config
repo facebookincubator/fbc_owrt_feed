@@ -1,8 +1,11 @@
 #!/usr/bin/lua
 http = require("ssl.https")
 json = require("cjson")
+require("uci")
 
 GATEWAY_TOKEN = require("swf_gateway_token")
+
+state = uci.cursor(nil, "/var/state")
 
 URL="https://api.fbwifi.com/v2.0/gateway"
 body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN.."&fields=config,config_version")
@@ -40,8 +43,8 @@ function process_cross_origin_rule(ix, ip)
 	print("TODO: cross_origin_rule("..tostring(ip)..") -> runtime")
 end
 
-function process_url(ix, ip)
-	print("TODO: URL_rule("..tostring(ip)..") -> runtime")
+function process_url(url_purpose, fqdn)
+	state:set("swf", "main", url_purpose, fqdn)	
 end
 
 
@@ -49,3 +52,4 @@ table.foreach(obj['config']['traffic_allowlist'], process_traffic_rule)
 table.foreach(obj['config']['cross_origin_allowlist'], process_cross_origin_rule)
 table.foreach(obj['config']['urls'], process_url)
 
+state:save('swf')
