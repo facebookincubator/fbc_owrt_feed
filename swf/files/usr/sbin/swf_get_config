@@ -47,6 +47,7 @@ function process_url(url_purpose, fqdn)
 	state:set("swf", "main", url_purpose, fqdn)	
 end
 
+state:set("swf", "main", "config")
 
 table.foreach(obj['config']['traffic_allowlist'], process_traffic_rule)
 table.foreach(obj['config']['cross_origin_allowlist'], process_cross_origin_rule)
