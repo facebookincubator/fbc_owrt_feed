@@ -1,10 +1,16 @@
 #!/usr/bin/lua
-require "luci.cacheloader"
-require "luci.sgi.cgi"
---luci.dispatcher.indexcache = "/tmp/luci-indexcache"
---luci.sgi.cgi.run()
-print("Content-type: application/json; charset=utf-8")
-print ('\n{"api_version": "2.0","token": "1234","gateway_id": "5678abcdef"}')
+require("uci")
 
-print(os.getenv("PATH_INFO"))
-os.execute("set > /tmp/cgi_env")
+state = uci.cursor(nil, "/var/state")
+
+print("Status: 302")
+print("Location: "..state:get("swf", "main", "landing_page_url"))
+
+print ('\n')
+
+method = os.getenv("REQUEST_METHOD")
+if method == 'GET' then
+	print(method)
+elseif method == 'POST' then
+	print(method)
+end
