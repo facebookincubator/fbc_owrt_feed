@@ -1,10 +1,23 @@
 #!/usr/bin/lua
-require "luci.cacheloader"
-require "luci.sgi.cgi"
---luci.dispatcher.indexcache = "/tmp/luci-indexcache"
---luci.sgi.cgi.run()
-print("Content-type: application/json; charset=utf-8")
-print ('\n{"api_version": "2.0","token": "1234","gateway_id": "5678abcdef"}')
+json = require("cjson")
+require("uci")
 
-print(os.getenv("PATH_INFO"))
-os.execute("set > /tmp/cgi_env")
+state = uci.cursor(nil, "/var/state")
+
+response = {}
+response['venue-info-url'] = state:get("swf", "main", "landing_page_url")
+
+function hasValidToken(client_ip)
+	return false
+end
+
+print("Content-type: application/captive+json; charset=utf-8")
+
+client = os.getenv("REMOTE_ADDR")
+response['captive'] = hasValidToken(client)
+
+if response['captive'] then
+	response['user-portal-url'] = state:get("swf", "main", "captive_portal_url")
+end
+
+print( json.encode(response) )
