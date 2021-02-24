@@ -9,16 +9,8 @@ state = uci.cursor(nil, "/var/state")
 
 URL="https://api.fbwifi.com/v2.0/gateway"
 body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN.."&fields=config,config_version")
---print(code)
---print(headers)
---for key,value in pairs(headers) do
---	print(key.." "..value)
---end
---print(body)
 
 obj = json.decode(body)
---table.foreach(obj, print)
---table.foreach(obj['config'], print)
 
 function save_cert(name, value)
 	local f = assert(io.open("/etc/swf/"..name, "w"))
@@ -36,11 +28,12 @@ save_cert("https_server_key", obj['config']['https_server_key'])
 table.foreach(obj['config']['host_redirect_ips'], process_redirect)
 
 function process_traffic_rule(ix, ip)
-	print("TODO: traffic_rule("..tostring(ip)..") -> runtime")
+	print("\nTODO: traffic_rule("..tostring(ix)..", "..tostring(ip)..") -> runtime")
+	table.foreach(ip, print)
 end
 
 function process_cross_origin_rule(ix, ip)
-	print("TODO: cross_origin_rule("..tostring(ip)..") -> runtime")
+	print("TODO: cross_origin_rule("..tostring(ix)..", "..tostring(ip)..") -> runtime")
 end
 
 function process_url(url_purpose, fqdn)
