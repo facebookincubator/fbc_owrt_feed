@@ -35,6 +35,7 @@ server.document-root = "/tmp"
 server.modules += ( "mod_redirect" )
 
 url.redirect = ("" => "${login_url}")
+url.redirect-code = 302
 EOF
 
 }
