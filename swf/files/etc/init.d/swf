@@ -17,7 +17,8 @@ amend_iptables_init() {
 	iptables -t nat -A CLIENT_TO_INTERNET -p tcp -i ${IFACE} --dport 80 -j HOST_REDIRLIST
 	iptables -t nat -A CLIENT_TO_INTERNET -p tcp -i ${IFACE} --dport 443 -j HOST_REDIRLIST
 
-	iptables -t nat -A CLIENT_TO_INTERNET -p tcp --dport 80 -j REDIRECT --to-ports 2060
+	#iptables -t nat -A CLIENT_TO_INTERNET -p tcp --dport 80 -j REDIRECT --to-ports 2060
+	iptables -t nat -A CLIENT_TO_INTERNET -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:2060
 
 	iptables -w -t filter -I FORWARD 1 -p udp -i ${IFACE} --dport 53 -j ACCEPT
 	iptables -w -t filter -I FORWARD 2 -i ${IFACE} -m mark --mark 0xfb -j ACCEPT
@@ -49,6 +50,7 @@ start_service() {
 
 	/usr/sbin/swf_get_config
 
+	/etc/init.d/firewall restart
 	amend_iptables_init
 
 	generate_lighttpd_config
