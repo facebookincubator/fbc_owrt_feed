@@ -2,6 +2,7 @@
 http = require("ssl.https")
 json = require("cjson")
 require("uci")
+log = require("posix.syslog")
 
 GATEWAY_TOKEN = require("swf_gateway_token")
 
@@ -13,12 +14,14 @@ body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN.."&field
 obj = json.decode(body)
 
 function save_cert(name, value)
+	log.syslog(log.LOG_INFO, "[swf] Saving cert "..name)
 	local f = assert(io.open("/etc/swf/"..name, "w"))
 	f:write(value)
 	f:close()
 end
 
 function process_redirect(ix, ip)
+	log.syslog(log.LOG_INFO, "[swf] Redirect "..ip)
 	print("TODO: redirect ip("..ip..") -> runtime")
 end
 
@@ -28,15 +31,18 @@ save_cert("https_server_key", obj['config']['https_server_key'])
 table.foreach(obj['config']['host_redirect_ips'], process_redirect)
 
 function process_traffic_rule(ix, ip)
+	log.syslog(log.LOG_INFO, "[swf] Traffic rule "..ix)
 	print("\nTODO: traffic_rule("..tostring(ix)..", "..tostring(ip)..") -> runtime")
 	table.foreach(ip, print)
 end
 
 function process_cross_origin_rule(ix, ip)
+	log.syslog(log.LOG_INFO, "[swf] Cross origin rule "..ip)
 	print("TODO: cross_origin_rule("..tostring(ix)..", "..tostring(ip)..") -> runtime")
 end
 
 function process_url(url_purpose, fqdn)
+	log.syslog(log.LOG_INFO, "[swf] Caching "..url_purpose)
 	state:set("swf", "main", url_purpose, fqdn)	
 end
 
