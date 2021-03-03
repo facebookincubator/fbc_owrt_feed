@@ -25,7 +25,7 @@ define Package/swf
   CATEGORY:=Network
   DEPENDS:=+iptables +luasec +luasocket \
 	+lighttpd +lighttpd-mod-cgi +lighttpd-mod-redirect \
-	+luci-base +libuci-lua
+	+luci-base +libuci-lua +luaposix
   TITLE:=Social Wi-Fi by Facebook
   PKGARCH:=all
 endef
