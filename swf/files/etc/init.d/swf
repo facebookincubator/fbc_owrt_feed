@@ -6,23 +6,35 @@ USE_PROCD=1
 PROG=/usr/sbin/lighttpd
 
 IFACE="wlan0"
+SWF_PORT=2060
+SWF_HTTPS_PORT=2061
 
 amend_iptables_init() {
-	iptables -t nat -N CLIENT_TO_INTERNET
-	iptables -t nat -A PREROUTING -i ${IFACE} -j CLIENT_TO_INTERNET
-	iptables -t filter -I INPUT -i ${IFACE} -p tcp --dport 2060 -j ACCEPT
-	iptables -t filter -I INPUT -i ${IFACE} -p tcp --dport 2061 -j ACCEPT
+	# create and set up redirection chains
+	iptables -w -t nat -N CLIENT_TO_INTERNET
+	iptables -w -t nat -A PREROUTING -i "$IFACE" -j CLIENT_TO_INTERNET
+	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -m mark --mark 0xfb -j ACCEPT
+	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -j REDIRECT --to-ports "$SWF_PORT"
 
-	iptables -t nat -N HOST_REDIRLIST
-	iptables -t nat -A CLIENT_TO_INTERNET -p tcp -i ${IFACE} --dport 80 -j HOST_REDIRLIST
-	iptables -t nat -A CLIENT_TO_INTERNET -p tcp -i ${IFACE} --dport 443 -j HOST_REDIRLIST
+	# Accept redirected traffic
+	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$SWF_PORT" -j ACCEPT
+	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$SWF_HTTPS_PORT" -j ACCEPT
 
-	#iptables -t nat -A CLIENT_TO_INTERNET -p tcp --dport 80 -j REDIRECT --to-ports 2060
-	iptables -t nat -A CLIENT_TO_INTERNET -p tcp --dport 80 -j DNAT --to-destination 127.0.0.1:2060
+	# create and prepend marking chains (add/del user scpripts use this chain)
+	iptables -w -t mangle -N CLIENT_TO_INTERNET
+	iptables -w -t mangle -I PREROUTING 1 -i "$IFACE" -j CLIENT_TO_INTERNET
 
-	iptables -w -t filter -I FORWARD 1 -p udp -i ${IFACE} --dport 53 -j ACCEPT
-	iptables -w -t filter -I FORWARD 2 -i ${IFACE} -m mark --mark 0xfb -j ACCEPT
-	iptables -w -t filter -A FORWARD -i ${IFACE} -j DROP
+	# v2.0 redirection
+	iptables -w -t nat -N HOST_REDIRLIST
+	iptables -w -t nat -I CLIENT_TO_INTERNET 1 -p tcp -i "$IFACE" --dport 80 -j HOST_REDIRLIST
+	iptables -w -t nat -I CLIENT_TO_INTERNET 2 -p tcp -i "$IFACE" --dport 443 -j HOST_REDIRLIST
+
+	iptables -w -t mangle -N TRAFFIC_ALLOWLIST
+	iptables -w -t mangle -I PREROUTING 2 -i "$IFACE" -j TRAFFIC_ALLOWLIST
+
+	iptables -w -t filter -I FORWARD 1 -p udp -i "$IFACE" --dport 53 -j ACCEPT
+	iptables -w -t filter -I FORWARD 2 -i "$IFACE" -m mark --mark 0xfb -j ACCEPT
+	iptables -w -t filter -A FORWARD -i "$IFACE" -j DROP
 }
 
 generate_lighttpd_config() {
@@ -48,11 +60,12 @@ start_service() {
                 chgrp www-data /var/log/lighttpd
         }
 
-	/usr/sbin/swf_get_config
 
 	/etc/init.d/firewall restart
 	amend_iptables_init
 
+	/usr/sbin/swf_get_config
+	
 	generate_lighttpd_config
         procd_open_instance
         procd_set_param command $PROG -D -f /etc/lighttpd/swf_redirect.conf
