@@ -2,25 +2,22 @@
 
 http = require("ssl.https")
 json = require("cjson")
+log = require("posix.syslog")
 
 response = { valid = false }
 
 if #arg > 0 then
-	local file = io.open("/etc/swf/gateway_token")
-	if file then
-	    for line in file:lines() do
-		GATEWAY_TOKEN = "FBWIFI:GATEWAY|"..line
-	    end
-	--else
-	--	print("File is missing ; /etc/swf/gateway_token")
-	end
+
+	GATEWAY_TOKEN = require("swf_gateway_token")
 
 	URL="https://api.fbwifi.com/v2.0/token"
 	BODY="token="..arg[1]
 	body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN, BODY)
 
-	if not code==200 then
+	if code==200 then
 		response = { valid = true }
+	else
+		log.syslog(log.LOG_WARNING, "[swf] "..body)
 	end
 end
 
