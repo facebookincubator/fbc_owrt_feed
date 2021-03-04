@@ -11,6 +11,12 @@ state = uci.cursor(nil, "/var/state")
 URL="https://api.fbwifi.com/v2.0/gateway"
 body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN.."&fields=config,config_version")
 
+if code == 200 then
+	log.syslog(log.LOG_INFO, "[swf] Got gateway config ("..code..")")
+else
+	log.syslog(log.LOG_WARNING, "[swf] Failed to get gateway config ("..code..")")
+end
+
 obj = json.decode(body)
 
 function save_cert(name, value)
@@ -30,10 +36,22 @@ save_cert("https_server_key", obj['config']['https_server_key'])
 
 table.foreach(obj['config']['host_redirect_ips'], process_redirect)
 
-function process_traffic_rule(ix, ip)
+RULE_FORMAT = "iptables -t mangle -A TRAFFIC_ALLOWLIST -d %s -p %s --dport %s -j MARK --set-mark 0xfb"
+function process_traffic_rule(ix, rule)
 	log.syslog(log.LOG_INFO, "[swf] Traffic rule "..ix)
-	print("\nTODO: traffic_rule("..tostring(ix)..", "..tostring(ip)..") -> runtime")
-	table.foreach(ip, print)
+	
+	if rule["protocol"] == 6 then
+		PROTO = "tcp"
+	elseif rule["protocol"] == 17 then
+		PROTO = "udp"
+	end
+	RULE = string.format(RULE_FORMAT, rule["ip"], PROTO, rule["port"])
+	local result = os.execute(RULE)
+	if result == 0 then
+		log.syslog(log.LOG_INFO, "[swf] Traffic rule "..ix)
+	else
+		log.syslog(log.LOG_WARNING, "[swf] Failed to install traffic rule ; "..RULE)
+	end
 end
 
 function process_cross_origin_rule(ix, ip)
