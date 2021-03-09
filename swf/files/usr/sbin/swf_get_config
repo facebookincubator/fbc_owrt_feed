@@ -14,7 +14,8 @@ body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN.."&field
 if code == 200 then
 	log.syslog(log.LOG_INFO, "[swf] Got gateway config ("..code..")")
 else
-	log.syslog(log.LOG_WARNING, "[swf] Failed to get gateway config ("..code..")")
+	log.syslog(log.LOG_CRIT, "[swf] Failed to get gateway config ("..code..")")
+	os.exit(1)
 end
 
 obj = json.decode(body)
@@ -27,8 +28,13 @@ function save_cert(name, value)
 end
 
 function process_redirect(ix, ip)
-	log.syslog(log.LOG_INFO, "[swf] Redirect "..ip)
-	print("TODO: redirect ip("..ip..") -> runtime")
+	IP_SET = "ip addr add dev br-lan "..ip
+	local result = os.execute(IP_SET)
+	if result == 0 then
+		log.syslog(log.LOG_INFO, "[swf] Redirect address applied "..ip)
+	else
+		log.syslog(log.LOG_WARNING, "[swf] Failed to apply redirect address "..ip)
+	end
 end
 
 save_cert("https_server_cert", obj['config']['https_server_cert'])
