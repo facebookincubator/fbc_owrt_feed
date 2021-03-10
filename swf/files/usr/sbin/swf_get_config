@@ -35,6 +35,12 @@ function process_redirect(ix, ip)
 	else
 		log.syslog(log.LOG_WARNING, "[swf] Failed to apply redirect address "..ip)
 	end
+
+	host=string.match(ip,'^[0-9%.]*')
+	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 80 -d "..host.." -j ACCEPT # REDIRECT --to-ports 2060")
+	--print(result)
+	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 443 -d "..host.."  -j ACCEPT # REDIRECT --to-ports 2061")
+	--print(result)
 end
 
 save_cert("https_server_cert", obj['config']['https_server_cert'])
