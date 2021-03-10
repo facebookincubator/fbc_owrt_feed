@@ -5,7 +5,7 @@ START=90
 USE_PROCD=1
 PROG=/usr/sbin/lighttpd
 
-IFACE="wlan0"
+IFACE="br-lan"
 SWF_PORT=2060
 SWF_HTTPS_PORT=2061
 
@@ -43,9 +43,16 @@ generate_lighttpd_config() {
 	config_get login_url 'main' 'captive_portal_url'
 
 	cat << EOF > /etc/lighttpd/swf_redirect.conf
-server.port = 2060
+server.port = $SWF_PORT
 server.document-root = "/tmp"
 server.modules += ( "mod_redirect" )
+server.modules += ( "mod_openssl" )
+
+\$SERVER["socket"] == ":$SWF_HTTPS_PORT" {
+    ssl.engine = "enable"
+    ssl.pemfile = "/etc/swf/https_server_cert"
+    ssl.privkey = "/etc/swf/https_server_key"
+}
 
 url.redirect = ("" => "${login_url}")
 url.redirect-code = 302
