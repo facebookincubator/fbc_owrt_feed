@@ -3,14 +3,58 @@ require("uci")
 
 state = uci.cursor(nil, "/var/state")
 
-print("Status: 302")
-print("Location: "..state:get("swf", "main", "landing_page_url"))
-
-print ('\n')
-
 method = os.getenv("REQUEST_METHOD")
 if method == 'GET' then
-	print(method)
+	print("Status: 302")
+	print("Location: "..state:get("swf", "main", "landing_page_url"))
+	print ('\n')
+
 elseif method == 'POST' then
-	print(method)
+	local token
+	
+	os.execute("set > /tmp/cgi_env")
+	print ('\n')
+
+	form_data=io.read()
+	while form_data do
+		token = string.match(form_data, '[%d]+')
+		if string.len(token or '') == 16 then
+			f = io.popen("/usr/sbin/swf_validate_token "..token, 'r')
+			s = assert(f:read('*a'))
+			f:close()
+			print(s)
+
+			client = os.getenv("REMOTE_ADDR")
+			f = io.popen("awk '/"..client.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
+			client_mac = assert(f:read('*a'))
+			state_name = "client_" .. string.gsub( client_mac, ':', "" )
+
+			RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
+
+			if string.match(s, 'valid.*true') then
+				
+				state:set("swf", state_name, "config")
+				state:set("swf", state_name, "token", token)
+				state:set("swf", state_name, "authenticated", "true")
+				
+				RULE_FMT="iptables -w -t mangle -A CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
+				RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, client_mac)
+				res = os.execute(RULE)
+				-- TODO; log failed exit code
+
+			else
+				client_state = state:get("swf", state_name, "authenticated")
+				state:delete("swf", state_name)
+
+				RULE_FMT="iptables -w -t mangle -D CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
+				RULE=string.format(RULE_COND.." && "..RULE_FMT, client_mac, client_mac)
+				res = os.execute(RULE)
+				-- TODO; log failed exit code
+			end
+			state:save('swf')
+		end
+
+		form_data=io.read()
+	end
+
 end
