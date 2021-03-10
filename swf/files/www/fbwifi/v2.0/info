@@ -3,9 +3,11 @@ require "luci.cacheloader"
 require "luci.sgi.cgi"
 json = require("cjson")
 
+GATEWAY_TOKEN = require("swf_gateway_token")
+
 response = { api_version = "2.0", token = nil }
 
-print("Content-type: application/json; charset=utf-8")
+print("Content-type: application/json; charset=utf-8\n")
 
 function getClientToken(client_ip)
 	--print(client_ip)
@@ -13,7 +15,8 @@ function getClientToken(client_ip)
 end
 
 function getGatewayId()
-	return 'todo1gwid'
+	id = string.match(GATEWAY_TOKEN, 'FBWIFI:GATEWAY|[0-9]*|([0-9]*)')
+	return id
 end
 
 response.token = getClientToken(os.getenv("REMOTE_ADDR"))
