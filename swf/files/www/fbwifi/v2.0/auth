@@ -18,7 +18,7 @@ elseif method == 'POST' then
 	form_data=io.read()
 	while form_data do
 		token = string.match(form_data, '[%d]+')
-		if string.len(token or '') == 16 then
+		if string.len(token or '') > 14 then
 			f = io.popen("/usr/sbin/swf_validate_token "..token, 'r')
 			s = assert(f:read('*a'))
 			f:close()
