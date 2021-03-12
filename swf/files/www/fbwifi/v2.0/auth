@@ -1,5 +1,7 @@
 #!/usr/bin/lua
 require("uci")
+log = require("posix.syslog")
+
 
 state = uci.cursor(nil, "/var/state")
 
@@ -30,6 +32,8 @@ elseif method == 'POST' then
 			state_name = "client_" .. string.gsub( client_mac, ':', "" )
 
 			RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
+			RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
+			local RULE
 
 			if string.match(s, 'valid.*true') then
 				
@@ -37,24 +41,24 @@ elseif method == 'POST' then
 				state:set("swf", state_name, "token", token)
 				state:set("swf", state_name, "authenticated", "true")
 				
-				RULE_FMT="iptables -w -t mangle -A CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
-				RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, client_mac)
-				res = os.execute(RULE)
-				-- TODO; log failed exit code
+				-- verify a rule exists for the given client MAC, OR install it
+				RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, "A", client_mac)
 
 			else
-				client_state = state:get("swf", state_name, "authenticated")
 				state:delete("swf", state_name)
 
-				RULE_FMT="iptables -w -t mangle -D CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
-				RULE=string.format(RULE_COND.." && "..RULE_FMT, client_mac, client_mac)
-				res = os.execute(RULE)
-				-- TODO; log failed exit code
+				-- verify a rule exists for the given client MAC, AND delete it
+				RULE=string.format(RULE_COND.." && "..RULE_FMT, client_mac, "D", client_mac)
+			end
+
+			res = os.execute(RULE)
+			if res ~= 0 then 
+				log.syslog(log.LOG_WARNING, string.format( "[swf] Failed to update iptables (%s)", res ) )
+				log.syslog(log.LOG_INFO, "[swf] "..RULE)
 			end
 			state:save('swf')
 		end
 
 		form_data=io.read()
 	end
-
 end
