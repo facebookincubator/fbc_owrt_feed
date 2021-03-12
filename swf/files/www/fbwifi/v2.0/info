@@ -2,8 +2,9 @@
 require "luci.cacheloader"
 require "luci.sgi.cgi"
 json = require("cjson")
+swf = require("swf")
 
-GATEWAY_TOKEN = require("swf_gateway_token")
+GATEWAY_TOKEN = swf.gateway_token()
 
 response = { api_version = "2.0", token = nil }
 

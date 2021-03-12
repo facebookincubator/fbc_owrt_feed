@@ -3,8 +3,9 @@ http = require("ssl.https")
 json = require("cjson")
 require("uci")
 log = require("posix.syslog")
+swf = require("swf")
 
-GATEWAY_TOKEN = require("swf_gateway_token")
+GATEWAY_TOKEN = swf.gateway_token()
 
 state = uci.cursor(nil, "/var/state")
 

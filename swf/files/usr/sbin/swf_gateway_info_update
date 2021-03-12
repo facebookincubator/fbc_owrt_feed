@@ -5,8 +5,9 @@ json = require("cjson")
 log = require("posix.syslog")
 socket = require("socket")
 require("uci")
+swf = require("swf")
 
-GATEWAY_TOKEN = require("swf_gateway_token")
+GATEWAY_TOKEN = swf.gateway_token()
 state = uci.cursor(nil, "/var/state")
 
 payload="name="..socket.dns.gethostname()
