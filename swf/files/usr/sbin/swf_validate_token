@@ -7,19 +7,6 @@ swf = require("swf")
 
 response = { valid = false }
 
-if #arg > 0 then
-
-	GATEWAY_TOKEN = swf.gateway_token()
-
-	URL="https://api.fbwifi.com/v2.0/token"
-	BODY="token="..arg[1]
-	body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN, BODY)
-
-	if code==200 then
-		response = { valid = true }
-	else
-		log.syslog(log.LOG_WARNING, "[swf] "..body)
-	end
-end
+response.valid = swf.validate_token(arg[1])
 
 print( json.encode(response) )
