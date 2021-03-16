@@ -1,7 +1,7 @@
 #!/usr/bin/lua
 require("uci")
 log = require("posix.syslog")
-
+swf = require("swf")
 
 state = uci.cursor(nil, "/var/state")
 
@@ -33,6 +33,7 @@ elseif method == 'POST' then
 
 			if swf.validate_token(token) then
 				
+				log.syslog(log.LOG_INFO, "[swf] Validated client "..client_mac)
 				state:set("swf", state_name, "client")
 				state:set("swf", state_name, "token", token)
 				state:set("swf", state_name, "authenticated", "true")
@@ -41,6 +42,7 @@ elseif method == 'POST' then
 				RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, "A", client_mac)
 
 			else
+				log.syslog(log.LOG_INFO, "[swf] Invalid client "..client)
 				state:delete("swf", state_name)
 
 				-- verify a rule exists for the given client MAC, AND delete it
