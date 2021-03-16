@@ -21,10 +21,6 @@ elseif method == 'POST' then
 	while form_data do
 		token = string.match(form_data, '[%d]+')
 		if string.len(token or '') > 14 then
-			f = io.popen("/usr/sbin/swf_validate_token "..token, 'r')
-			s = assert(f:read('*a'))
-			f:close()
-			print(s)
 
 			client = os.getenv("REMOTE_ADDR")
 			f = io.popen("awk '/"..client.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
@@ -35,9 +31,9 @@ elseif method == 'POST' then
 			RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
 			local RULE
 
-			if string.match(s, 'valid.*true') then
+			if swf.validate_token(token) then
 				
-				state:set("swf", state_name, "config")
+				state:set("swf", state_name, "client")
 				state:set("swf", state_name, "token", token)
 				state:set("swf", state_name, "authenticated", "true")
 				

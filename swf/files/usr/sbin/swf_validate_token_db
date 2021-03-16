@@ -1,0 +1,47 @@
+#!/usr/bin/lua
+
+https = require("ssl.https")
+json = require("cjson")
+log = require("posix.syslog")
+swf = require("swf")
+require("uci")
+
+state = uci.cursor(nil, "/var/state")
+GATEWAY_TOKEN = swf.gateway_token()
+
+request = { 
+	tokens = {}, 
+	traffic_type = "total",
+	config_version = state:get("swf", "main", "config_version")
+}
+
+function queue_token(client)
+
+	request.tokens[client.token]={
+		incoming = json.null,
+		outgoing = json.null,
+		connected_time_sec = json.null,
+		inactive_time_sec = json.null,
+		signal_rssi_dbm = json.null,
+		--expected_tpus_mbps = json.null,
+		is_connected = true
+	}
+
+end
+
+state:foreach("swf", "client", queue_token)
+print( "\nRequest:\n"..json.encode(request) )
+
+URL="https://api.fbwifi.com/v2.0/tokens"
+BODY=string.format(
+	"tokens=%s&traffic_type=%s&config_version=%s",
+	json.encode(request.tokens),
+	"'total'",
+	state:get("swf", "main", "config_version")
+)
+
+body, code, headers = https.request(URL.."?access_token="..GATEWAY_TOKEN, BODY)
+
+if code then
+	print( "\nResponse:\n"..body )
+end

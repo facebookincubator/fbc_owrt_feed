@@ -83,4 +83,5 @@ table.foreach(obj['config']['traffic_allowlist'], process_traffic_rule)
 table.foreach(obj['config']['cross_origin_allowlist'], process_cross_origin_rule)
 table.foreach(obj['config']['urls'], process_url)
 
+state:set("swf", "main", "config_version", obj['config_version'])
 state:save('swf')
