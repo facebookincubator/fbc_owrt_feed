@@ -60,6 +60,16 @@ EOF
 
 }
 
+update_crontab() {
+	WIP=$( mktemp )
+	crontab -l > ${WIP}
+	grep -q "swf_validate_token_db" ${WIP} && return
+
+	echo '*/5 * * * * /usr/sbin/swf_validate_token_db' >> ${WIP}
+	crontab ${WIP}
+	/etc/init.d/cron restart
+}
+
 start_service() {
 
 	config_load swf
@@ -74,6 +84,7 @@ start_service() {
                 chgrp www-data /var/log/lighttpd
         }
 
+	update_crontab
 
 	/etc/init.d/firewall restart
 	amend_iptables_init
