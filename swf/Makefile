@@ -27,7 +27,7 @@ define Package/swf
 	+lighttpd +lighttpd-mod-cgi +lighttpd-mod-redirect \
 	+luci-base +libuci-lua +luaposix \
 	+luci-mod-network +luci-mod-status +luci-theme-bootstrap \
-	+lighttpd-mod-openssl
+	+lighttpd-mod-openssl +lua-cjson
   TITLE:=Social Wi-Fi by Facebook
   PKGARCH:=all
 endef
