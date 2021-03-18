@@ -1,8 +1,11 @@
+-- SWF Lua library
+-- function table
 local swf = {}
 
 local http = require("ssl.https")
 local json = require("cjson")
 local log = require("posix.syslog")
+local uci = require("uci")
 
 function swf.gateway_token()
 	local file = io.open("/etc/swf/gateway_token")
@@ -39,4 +42,63 @@ function swf.validate_token( token )
 	return valid
 end
 
+function swf.instate_client_rule( client_mac, token )
+
+	log.syslog(log.LOG_INFO, "[swf] Validated client "..client_mac)
+
+	state = uci.cursor(nil, "/var/state")
+	state_name = "client_" .. string.gsub( client_mac, ':', "" )
+
+	RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
+	RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
+	local RULE
+	
+	state:set("swf", state_name, "client")
+	state:set("swf", state_name, "token", token)
+	state:set("swf", state_name, "authenticated", "true")
+				
+	-- verify a rule exists for the given client MAC, 
+	--   OR install it
+	RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, "A", client_mac)
+
+	res = os.execute(RULE)
+	if res ~= 0 then 
+		log.syslog(log.LOG_WARNING, string.format( "[swf] Failed to update iptables (%s)", res ) )
+	end
+	log.syslog(log.LOG_INFO, "[swf] "..RULE)
+	
+	state:save('swf')
+end
+
+function swf.revoke_client_rule( client_mac, token )
+
+	log.syslog(log.LOG_INFO, "[swf] Invalidating client "..client_mac)
+
+	state = uci.cursor(nil, "/var/state")
+	state_name = "client_" .. string.gsub( client_mac, ':', "" )
+
+	RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
+	RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
+	local RULE
+	
+	state:set("swf", state_name, "client")
+	state:set("swf", state_name, "token", token)
+	state:set("swf", state_name, "authenticated", "true")
+				
+	-- verify a rule exists for the given client MAC, 
+	--  AND delete it
+	RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, "D", client_mac)
+
+	res = os.execute(RULE)
+	if res ~= 0 then 
+		log.syslog(log.LOG_WARNING, string.format( "[swf] Failed to update iptables (%s)", res ) )
+	end
+	log.syslog(log.LOG_INFO, "[swf] "..RULE)
+
+	state:save('swf')
+end
+
+--
+-- Return the funtion table to the host script
+--
 return swf

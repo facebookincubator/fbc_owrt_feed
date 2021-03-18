@@ -25,36 +25,12 @@ elseif method == 'POST' then
 			client = os.getenv("REMOTE_ADDR")
 			f = io.popen("awk '/"..client.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
 			client_mac = assert(f:read('*a'))
-			state_name = "client_" .. string.gsub( client_mac, ':', "" )
-
-			RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
-			RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
-			local RULE
 
 			if swf.validate_token(token) then
-				
-				log.syslog(log.LOG_INFO, "[swf] Validated client "..client_mac)
-				state:set("swf", state_name, "client")
-				state:set("swf", state_name, "token", token)
-				state:set("swf", state_name, "authenticated", "true")
-				
-				-- verify a rule exists for the given client MAC, OR install it
-				RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, "A", client_mac)
-
+				swf.instate_client_rule(client_mac, token)
 			else
-				log.syslog(log.LOG_INFO, "[swf] Invalid client "..client)
-				state:delete("swf", state_name)
-
-				-- verify a rule exists for the given client MAC, AND delete it
-				RULE=string.format(RULE_COND.." && "..RULE_FMT, client_mac, "D", client_mac)
+				swf.revoke_client_rule(client_mac, token)
 			end
-
-			res = os.execute(RULE)
-			if res ~= 0 then 
-				log.syslog(log.LOG_WARNING, string.format( "[swf] Failed to update iptables (%s)", res ) )
-				log.syslog(log.LOG_INFO, "[swf] "..RULE)
-			end
-			state:save('swf')
 		end
 
 		form_data=io.read()
