@@ -1,0 +1,26 @@
+#!/usr/bin/lua
+require "luci.cacheloader"
+require "luci.sgi.cgi"
+json = require("cjson")
+swf = require("swf")
+
+GATEWAY_TOKEN = swf.gateway_token()
+
+response = { api_version = "2.0", token = nil }
+
+print("Content-type: application/json; charset=utf-8\n")
+
+function getClientToken(client_ip)
+	--print(client_ip)
+	return nil
+end
+
+function getGatewayId()
+	id = string.match(GATEWAY_TOKEN, 'FBWIFI:GATEWAY|[0-9]*|([0-9]*)')
+	return id
+end
+
+response.token = getClientToken(os.getenv("REMOTE_ADDR"))
+response.gateway_id = getGatewayId()
+
+print( json.encode(response) )

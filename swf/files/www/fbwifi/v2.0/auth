@@ -1,0 +1,38 @@
+#!/usr/bin/lua
+require("uci")
+log = require("posix.syslog")
+swf = require("swf")
+
+state = uci.cursor(nil, "/var/state")
+
+method = os.getenv("REQUEST_METHOD")
+if method == 'GET' then
+	print("Status: 302")
+	print("Location: "..state:get("swf", "main", "landing_page_url"))
+	print ('\n')
+
+elseif method == 'POST' then
+	local token
+	
+	os.execute("set > /tmp/cgi_env")
+	print ('\n')
+
+	form_data=io.read()
+	while form_data do
+		token = string.match(form_data, '[%d]+')
+		if string.len(token or '') > 14 then
+
+			client = os.getenv("REMOTE_ADDR")
+			f = io.popen("awk '/"..client.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
+			client_mac = assert(f:read('*a'))
+
+			if swf.validate_token(token) then
+				swf.instate_client_rule(token, client_mac)
+			else
+				swf.revoke_client_rule(token)
+			end
+		end
+
+		form_data=io.read()
+	end
+end

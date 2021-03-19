@@ -1,0 +1,23 @@
+#!/usr/bin/lua
+json = require("cjson")
+require("uci")
+
+state = uci.cursor(nil, "/var/state")
+
+response = {}
+response['venue-info-url'] = state:get("swf", "main", "landing_page_url")
+
+function hasValidToken(client_ip)
+	return false
+end
+
+print("Content-type: application/captive+json; charset=utf-8")
+
+client = os.getenv("REMOTE_ADDR")
+response['captive'] = hasValidToken(client)
+
+if response['captive'] then
+	response['user-portal-url'] = state:get("swf", "main", "captive_portal_url")
+end
+
+print( json.encode(response) )
