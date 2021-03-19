@@ -42,12 +42,12 @@ function swf.validate_token( token )
 	return valid
 end
 
-function swf.instate_client_rule( client_mac, token )
+function swf.instate_client_rule( token, client_mac )
 
 	log.syslog(log.LOG_INFO, "[swf] Validated client "..client_mac)
 
 	state = uci.cursor(nil, "/var/state")
-	state_name = "client_" .. string.gsub( client_mac, ':', "" )
+	state_name = "token_" .. token
 
 	RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
 	RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
@@ -55,6 +55,7 @@ function swf.instate_client_rule( client_mac, token )
 	
 	state:set("swf", state_name, "client")
 	state:set("swf", state_name, "token", token)
+	state:set("swf", state_name, "mac", client_mac)
 	state:set("swf", state_name, "authenticated", "true")
 				
 	-- verify a rule exists for the given client MAC, 
@@ -70,35 +71,37 @@ function swf.instate_client_rule( client_mac, token )
 	state:save('swf')
 end
 
-function swf.revoke_client_rule( client_mac, token )
+function swf.revoke_client_rule( token )
 
-	log.syslog(log.LOG_INFO, "[swf] Invalidating client "..client_mac)
+	log.syslog(log.LOG_INFO, string.format( "[swf] Invalidating token (%s)", token) )
 
 	state = uci.cursor(nil, "/var/state")
-	state_name = "client_" .. string.gsub( client_mac, ':', "" )
-
-	RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
-	RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
-	local RULE
+	state_name = "token_" .. token
 	
-	state:set("swf", state_name, "client")
-	state:set("swf", state_name, "token", token)
-	state:set("swf", state_name, "authenticated", "true")
-				
-	-- verify a rule exists for the given client MAC, 
-	--  AND delete it
-	RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, "D", client_mac)
+	client_mac = state:get("swf", state_name, "mac")
 
-	res = os.execute(RULE)
-	if res ~= 0 then 
-		log.syslog(log.LOG_WARNING, string.format( "[swf] Failed to update iptables (%s)", res ) )
+	if client_mac then
+		RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
+		RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
+
+		-- verify a rule exists for the given client MAC, 
+		--  AND delete it
+		RULE=string.format(RULE_COND.." && "..RULE_FMT, client_mac, "D", client_mac)
+
+		res = os.execute(RULE)
+		if res ~= 0 then 
+			log.syslog(log.LOG_WARNING, string.format( "[swf] Failed to update iptables (%s)", res ) )
+		end
+		log.syslog(log.LOG_INFO, "[swf] "..RULE)
+
+		state:delete("swf", state_name)
+		state:save('swf')
+	else
+		log.syslog(log.LOG_WARNING, string.format( "[swf] Client MAC not found in DB (%s)", state_name ) )
 	end
-	log.syslog(log.LOG_INFO, "[swf] "..RULE)
-
-	state:save('swf')
 end
 
 --
--- Return the funtion table to the host script
+-- Return the function table to the host script
 --
 return swf

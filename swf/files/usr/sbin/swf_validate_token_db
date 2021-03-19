@@ -47,9 +47,9 @@ if code then
 end
 
 response = json.decode(body)
-print(response)
-table.foreach(response,print)
-table.foreach(response.tokens,print)
+--print(response)
+--table.foreach(response,print)
+--table.foreach(response.tokens,print)
 
 if response.config_valid then
 	log.syslog(log.LOG_INFO, "[swf] Config validated")
@@ -60,7 +60,10 @@ end
 function process_token(token, metadata)
 	table.foreach(metadata,print)
 	if metadata.valid then
-		print(token)	
+		print("OK: "..token)	
+	else
+		print("Nok: "..token)	
+		swf.revoke_client_rule( token )
 	end
 end
 table.foreach(response.tokens,process_token)

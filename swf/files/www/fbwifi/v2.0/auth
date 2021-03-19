@@ -27,9 +27,9 @@ elseif method == 'POST' then
 			client_mac = assert(f:read('*a'))
 
 			if swf.validate_token(token) then
-				swf.instate_client_rule(client_mac, token)
+				swf.instate_client_rule(token, client_mac)
 			else
-				swf.revoke_client_rule(client_mac, token)
+				swf.revoke_client_rule(token)
 			end
 		end
 
