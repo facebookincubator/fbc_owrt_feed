@@ -4,14 +4,17 @@ log = require("posix.syslog")
 swf = require("swf")
 
 state = uci.cursor(nil, "/var/state")
-os.execute('set > /tmp/cgi_env')
-
 function process_cors()
 	origin = os.getenv("HTTP_ORIGIN")
 	if string.len(origin or '') > 0 then
-		-- TODO lookup allowed origins
-		print("Access-Control-Allow-Origin: "..origin)
-		print("Vary: Origin")
+		allow_list = state:get("swf", "main", "cross_origin_allow_rules")
+		for _, value in pairs(allow_list) do
+    			if value == origin then
+				print("Access-Control-Allow-Origin: "..origin)
+				print("Vary: Origin")
+				break
+			end
+		end
 	end
 end
 
