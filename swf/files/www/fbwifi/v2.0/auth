@@ -22,12 +22,12 @@ method = os.getenv("REQUEST_METHOD")
 if method == 'GET' then
 	print("Status: 302")
 	print("Location: "..state:get("swf", "main", "landing_page_url"))
+	process_cors()
 	print ('\n')
 
 elseif method == 'POST' then
 	local token
 	
-	os.execute("set > /tmp/cgi_env")
 	process_cors()
 
 	form_data=io.read()
