@@ -28,19 +28,29 @@ function save_cert(name, value)
 	f:close()
 end
 
-function process_redirect(ix, ip)
-	IP_SET = "ip addr add dev br-lan "..ip
+function process_redirect(ix, host)
+	IP_SET = "ip addr add dev br-lan "..host
 	local result = os.execute(IP_SET)
 	if result == 0 then
-		log.syslog(log.LOG_INFO, "[swf] Redirect address applied "..ip)
+		log.syslog(log.LOG_INFO, "[swf] Redirect address applied "..host)
 	else
-		log.syslog(log.LOG_WARNING, "[swf] Failed to apply redirect address "..ip)
+		log.syslog(log.LOG_WARNING, "[swf] Failed to apply redirect address "..host)
 	end
 
-	host=string.match(ip,'^[0-9%.]*')
-	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 80 -d "..host.." -j ACCEPT # REDIRECT --to-ports 2060")
+	ip = string.match(host, '([0-9\.]*)/([0-9]*)')
+	RULE_FMT="grep -q \"%s\" /etc/hosts || echo \"%s\tstar.fbwifigateway.net\" >> /etc/hosts"
+	HOSTS_RULE = string.format(RULE_FMT, ip, ip)
+	result = os.execute(HOSTS_RULE)
+	if result == 0 then
+		log.syslog(log.LOG_INFO, "[swf] Cached redirect host for DNS")
+	else
+		log.syslog(log.LOG_WARNING, "[swf] Failed to amend /etc/hosts")
+		log.syslog(log.LOG_INFO, "[swf] "..HOSTS_RULE)
+	end
+
+	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 80 -d "..ip.." -j ACCEPT # REDIRECT --to-ports 2060")
 	--print(result)
-	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 443 -d "..host.."  -j ACCEPT # REDIRECT --to-ports 2061")
+	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 443 -d "..ip.."  -j ACCEPT # REDIRECT --to-ports 2061")
 	--print(result)
 end
 
