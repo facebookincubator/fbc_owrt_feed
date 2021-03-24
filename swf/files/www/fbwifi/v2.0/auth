@@ -4,23 +4,38 @@ log = require("posix.syslog")
 swf = require("swf")
 
 state = uci.cursor(nil, "/var/state")
+function process_cors()
+	origin = os.getenv("HTTP_ORIGIN")
+	if string.len(origin or '') > 0 then
+		allow_list = state:get("swf", "main", "cross_origin_allow_rules")
+		for _, value in pairs(allow_list) do
+    			if value == origin then
+				print("Access-Control-Allow-Origin: "..origin)
+				print("Vary: Origin")
+				break
+			end
+		end
+	end
+end
 
 method = os.getenv("REQUEST_METHOD")
 if method == 'GET' then
 	print("Status: 302")
 	print("Location: "..state:get("swf", "main", "landing_page_url"))
+	process_cors()
 	print ('\n')
 
 elseif method == 'POST' then
 	local token
 	
-	os.execute("set > /tmp/cgi_env")
-	print ('\n')
+	process_cors()
 
 	form_data=io.read()
 	while form_data do
 		token = string.match(form_data, '[%d]+')
 		if string.len(token or '') > 14 then
+
+			print("Status: 200")
 
 			client = os.getenv("REMOTE_ADDR")
 			f = io.popen("awk '/"..client.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
@@ -28,11 +43,14 @@ elseif method == 'POST' then
 
 			if swf.validate_token(token) then
 				swf.instate_client_rule(token, client_mac)
+				print("\n{\"valid\":true}")
 			else
 				swf.revoke_client_rule(token)
+				print("\n{\"valid\":false}")
 			end
 		end
 
 		form_data=io.read()
 	end
+	print ('\n')
 end

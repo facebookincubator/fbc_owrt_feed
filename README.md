@@ -10,12 +10,13 @@ This repository is intended to be layered on-top of an OpenWrt buildroot. If you
 
 This feed needs to be added to your buildroot configuration. To install all its package definitions, run:
 ```
-echo "src-git fbc https://github.com/internetorg/fbc_owrt_feed.git" >> feeds.conf.default
+echo "src-git fbc https://github.com/facebookincubator/fbc_owrt_feed.git" >> feeds.conf.default
 ./scripts/feeds update fbc
 ./scripts/feeds install -a -p fbc
+./scripts/feeds install -a
 ```
 
-To learn more about the Express Wi-Fi programme and connect with Facebook partnership engineers, visit [Express Wi-Fi](https://expresswifi.fb.com).
+To learn more about the Connectivity programme and connect with Facebook partnership engineers, visit [Facebook Connectivity](https://connectivity.fb.com/).
 
 ## License
 
