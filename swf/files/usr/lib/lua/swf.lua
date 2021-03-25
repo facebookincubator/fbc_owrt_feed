@@ -8,15 +8,15 @@ local log = require("posix.syslog")
 local uci = require("uci")
 
 function swf.gateway_token()
-	local file = io.open("/etc/swf/gateway_token")
-	if file then
-	    for line in file:lines() do
-	        return "FBWIFI:GATEWAY|"..line
-	    end
+
+	state = uci.cursor(nil, "/var/state")
+	token = state:get("swf", "main", "gateway_token")
+	if token and string.len(token) > 0 then
+		return token
 	else
-	        print("File is missing ; /etc/swf/gateway_token")
+		log.syslog( log.LOG_WARNING, "[swf] UCI option swf.main.gateway_token is missing" )
 		return nil
-	end
+	end 
 end
 
 function swf.validate_token( token )
