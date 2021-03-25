@@ -8,15 +8,15 @@ local log = require("posix.syslog")
 local uci = require("uci")
 
 function swf.gateway_token()
-	local file = io.open("/etc/swf/gateway_token")
-	if file then
-	    for line in file:lines() do
-	        return "FBWIFI:GATEWAY|"..line
-	    end
+
+	state = uci.cursor(nil, "/var/state")
+	token = state:get("swf", "main", "gateway_token")
+	if token and string.len(token) > 0 then
+		return token
 	else
-	        print("File is missing ; /etc/swf/gateway_token")
+		log.syslog( log.LOG_WARNING, "[swf] UCI option swf.main.gateway_token is missing" )
 		return nil
-	end
+	end 
 end
 
 function swf.validate_token( token )
@@ -99,6 +99,24 @@ function swf.revoke_client_rule( token )
 	else
 		log.syslog(log.LOG_WARNING, string.format( "[swf] Client MAC not found in DB (%s)", state_name ) )
 	end
+end
+
+function swf.reset()
+
+	local success = false
+        GATEWAY_TOKEN = swf.gateway_token()
+        URL="https://api.fbwifi.com/v2.0/gateway/reset"
+	BODY="{}"
+        body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN, BODY)
+
+        if code==200 then
+                log.syslog(log.LOG_INFO, "[swf] Reset committed")
+                success = true
+        else
+                log.syslog(log.LOG_WARNING, "[swf] Reset failed : "..body)
+        end
+
+	return success
 end
 
 --

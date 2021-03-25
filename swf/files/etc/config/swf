@@ -1,2 +1,3 @@
 config config 'main'
 	option enabled '1'
+	option gateway_token 'FBWIFI:GATEWAY|123456789|0123456789|abcdeABCDE123456789'
