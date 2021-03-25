@@ -101,6 +101,24 @@ function swf.revoke_client_rule( token )
 	end
 end
 
+function swf.reset()
+
+	local success = false
+        GATEWAY_TOKEN = swf.gateway_token()
+        URL="https://api.fbwifi.com/v2.0/gateway/reset"
+	BODY="{}"
+        body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN, BODY)
+
+        if code==200 then
+                log.syslog(log.LOG_INFO, "[swf] Reset committed")
+                success = true
+        else
+                log.syslog(log.LOG_WARNING, "[swf] Reset failed : "..body)
+        end
+
+	return success
+end
+
 --
 -- Return the function table to the host script
 --
