@@ -6,13 +6,29 @@ swf = require("swf")
 
 GATEWAY_TOKEN = swf.gateway_token()
 
-response = { api_version = "2.0", token = nil }
+response = { api_version = "2.0", token = json.null }
+client_mac = ""
 
 print("Content-type: application/json; charset=utf-8\n")
 
+function map_remote_mac_to_token(client)
+
+	for key, value in pairs(client) do
+		if
+			key == 'mac' and
+			value == client_mac
+		then
+			response.token = client.token
+			return false -- escape outer loop
+		end
+	end
+end
+
 function getClientToken(client_ip)
-	--print(client_ip)
-	return nil
+	f = io.popen("awk '/"..client_ip.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
+	client_mac = assert(f:read('*a'))
+
+	state:foreach("swf", "client", map_remote_mac_to_token)
 end
 
 function getGatewayId()
@@ -20,7 +36,7 @@ function getGatewayId()
 	return id
 end
 
-response.token = getClientToken(os.getenv("REMOTE_ADDR"))
+getClientToken(os.getenv("REMOTE_ADDR"))
 response.gateway_id = getGatewayId()
 
 print( json.encode(response) )
