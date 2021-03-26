@@ -44,7 +44,7 @@ generate_lighttpd_config() {
 	config_load swf
 	config_get login_url 'main' 'captive_portal_url'
 
-	cat << EOF > /etc/lighttpd/swf_redirect.conf
+	cat << EOF > /var/run/swf_redirect.conf
 server.port = $SWF_PORT
 server.document-root = "/tmp"
 server.modules += ( "mod_redirect" )
@@ -79,6 +79,8 @@ start_service() {
 	[ $enabled = 0 ] && return
 
 	logger "[swf] Enabled; starting"
+	
+	mkdir -p /etc/swf
 
         user_exists http || user_add http
         [ -d /var/log/lighttpd ] || {
