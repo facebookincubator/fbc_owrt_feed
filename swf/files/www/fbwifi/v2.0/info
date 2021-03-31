@@ -4,12 +4,25 @@ require "luci.sgi.cgi"
 json = require("cjson")
 swf = require("swf")
 
+state = uci.cursor(nil, "/var/state")
 GATEWAY_TOKEN = swf.gateway_token()
 
 response = { api_version = "2.0", token = json.null }
 client_mac = ""
 
-print("Content-type: application/json; charset=utf-8\n")
+function process_cors()
+        origin = os.getenv("HTTP_ORIGIN")
+        if string.len(origin or '') > 0 then
+                allow_list = state:get("swf", "main", "cross_origin_allow_rules")
+                for _, value in pairs(allow_list) do
+                        if value == origin then
+                                print("Access-Control-Allow-Origin: "..origin)
+                                print("Vary: Origin")
+                                break
+                        end
+                end
+        end
+end
 
 function map_remote_mac_to_token(client)
 
@@ -35,6 +48,9 @@ function getGatewayId()
 	id = string.match(GATEWAY_TOKEN, 'FBWIFI:GATEWAY|[0-9]*|([0-9]*)')
 	return id
 end
+
+process_cors()
+print("Content-type: application/json; charset=utf-8\n")
 
 getClientToken(os.getenv("REMOTE_ADDR"))
 response.gateway_id = getGatewayId()
