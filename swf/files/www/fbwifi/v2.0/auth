@@ -27,17 +27,16 @@ if method == 'GET' then
 
 elseif method == 'POST' then
 	local token
-        log.syslog(log.LOG_INFO, "[swf] auth POST before process_cors")
+	log.syslog(log.LOG_INFO, "[swf] auth POST before process_cors")
 	
 	process_cors()
-        log.syslog(log.LOG_INFO, "[swf] auth POST after process_cors")
+	print("Status: 200")
+	log.syslog(log.LOG_INFO, "[swf] auth POST after process_cors")
 
 	form_data=io.read()
 	while form_data do
 		token = string.match(form_data, '[%d]+')
 		if string.len(token or '') > 14 then
-
-			print("Status: 200")
 
 			client = os.getenv("REMOTE_ADDR")
 			f = io.popen("awk '/"..client.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
@@ -52,6 +51,9 @@ elseif method == 'POST' then
 				swf.revoke_client_rule(token)
 				print("\n{\"valid\":false}")
 			end
+		else
+			swf.revoke_client_rule(token)
+			print("\n{\"valid\":false}")
 		end
 
 		form_data=io.read()

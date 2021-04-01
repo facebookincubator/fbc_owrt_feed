@@ -3,18 +3,39 @@ json = require("cjson")
 require("uci")
 
 state = uci.cursor(nil, "/var/state")
+client_mac = ""
+token = ""
 
 response = {}
-response['venue-info-url'] = state:get("swf", "main", "landing_page_url")
+response['venue-info-url'] = string.format(
+	"%s&source=capport",
+	state:get("swf", "main", "landing_page_url")
+)
 
-function hasValidToken(client_ip)
-	return false
+function map_remote_mac_to_token(client)
+        for key, value in pairs(client) do
+                if
+                        key == 'mac' and
+                        value == client_mac
+                then
+			token = client.token
+                        return false
+                end
+        end
 end
 
-print("Content-type: application/captive+json; charset=utf-8")
+function hasValidToken(client_ip)
+	f = io.popen("awk '/"..client_ip.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
+	client_mac = assert(f:read('*a'))
+	state:foreach("swf", "client", map_remote_mac_to_token)
+
+	return 0 < string.len(token)
+end
+
+print("Content-type: application/captive+json; charset=utf-8\n")
 
 client = os.getenv("REMOTE_ADDR")
-response['captive'] = hasValidToken(client)
+response['captive'] = not hasValidToken(client)
 
 if response['captive'] then
 	response['user-portal-url'] = state:get("swf", "main", "captive_portal_url")
