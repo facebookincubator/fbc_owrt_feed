@@ -27,9 +27,11 @@ if method == 'GET' then
 
 elseif method == 'POST' then
 	local token
+	log.syslog(log.LOG_INFO, "[swf] auth POST before process_cors")
 	
 	process_cors()
 	print("Status: 200")
+	log.syslog(log.LOG_INFO, "[swf] auth POST after process_cors")
 
 	form_data=io.read()
 	while form_data do
@@ -41,9 +43,11 @@ elseif method == 'POST' then
 			client_mac = assert(f:read('*a'))
 
 			if swf.validate_token(token) then
+                                log.syslog(log.LOG_INFO, string.format( "[swf] auth POST valid token (%s) for mac (%s)", token, client_mac) )
 				swf.instate_client_rule(token, client_mac)
 				print("\n{\"valid\":true}")
 			else
+                                log.syslog(log.LOG_INFO, string.format( "[swf] auth POST invalid token (%s) for mac (%s)", token, client_mac) )
 				swf.revoke_client_rule(token)
 				print("\n{\"valid\":false}")
 			end
