@@ -43,15 +43,16 @@ elseif method == 'POST' then
 			client_mac = assert(f:read('*a'))
 
 			if swf.validate_token(token) then
-                                log.syslog(log.LOG_INFO, string.format( "[swf] auth POST valid token (%s) for mac (%s)", token, client_mac) )
+                                log.syslog(log.LOG_INFO, string.format( "[swf] auth POST valid token (%s) for mac (%s)", token or 'nil', client_mac or 'nil') )
 				swf.instate_client_rule(token, client_mac)
 				print("\n{\"valid\":true}")
 			else
-                                log.syslog(log.LOG_INFO, string.format( "[swf] auth POST invalid token (%s) for mac (%s)", token, client_mac) )
+                                log.syslog(log.LOG_INFO, string.format( "[swf] auth POST invalid token (%s) for mac (%s)", token or 'nil', client_mac or 'nil') )
 				swf.revoke_client_rule(token)
 				print("\n{\"valid\":false}")
 			end
 		else
+                        log.syslog(log.LOG_INFO, string.format("[swf] auth POST unexpected token (%s) ", token or 'nil' ))
 			swf.revoke_client_rule(token)
 			print("\n{\"valid\":false}")
 		end

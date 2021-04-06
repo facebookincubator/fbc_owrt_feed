@@ -72,6 +72,11 @@ function swf.instate_client_rule( token, client_mac )
 end
 
 function swf.revoke_client_rule( token )
+        
+        if (token == nil) then
+                log.syslog(log.LOG_INFO, "[swf] Invalidating token, but token is Nil")
+                return
+        end
 
 	log.syslog(log.LOG_INFO, string.format( "[swf] Invalidating token (%s)", token) )
 
