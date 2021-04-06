@@ -42,6 +42,21 @@ function fbwifi.validate_token( token )
 	return valid
 end
 
+local mac_to_purge=''
+function fbwifi.remove_client_by_mac(client)
+	state = uci.cursor(nil, "/var/state")
+
+	for key, value in pairs(client) do
+		if
+			key == 'mac' and
+			value == mac_to_purge
+		then
+			state:delete("fbwifi", client['._name'])
+			return
+		end
+	end
+end
+
 function fbwifi.instate_client_rule( token, client_mac )
 
 	log.syslog(log.LOG_INFO, "[fbwifi] Validated client "..client_mac)
@@ -52,6 +67,9 @@ function fbwifi.instate_client_rule( token, client_mac )
 	RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
 	RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
 	local RULE
+
+	mac_to_purge = client_mac
+	state:foreach("fbwifi", "client", remove_client_by_mac)
 	
 	state:set("fbwifi", state_name, "client")
 	state:set("fbwifi", state_name, "token", token)
