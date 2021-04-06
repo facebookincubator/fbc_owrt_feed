@@ -3,9 +3,9 @@ http = require("ssl.https")
 json = require("cjson")
 require("uci")
 log = require("posix.syslog")
-swf = require("swf")
+fbwifi = require("fbwifi")
 
-GATEWAY_TOKEN = swf.gateway_token()
+GATEWAY_TOKEN = fbwifi.gateway_token()
 
 state = uci.cursor(nil, "/var/state")
 
@@ -13,17 +13,17 @@ URL="https://api.fbwifi.com/v2.0/gateway"
 body, code, headers = http.request(URL.."?access_token="..GATEWAY_TOKEN.."&fields=config,config_version")
 
 if code == 200 then
-	log.syslog(log.LOG_INFO, "[swf] Got gateway config ("..code..")")
+	log.syslog(log.LOG_INFO, "[fbwifi] Got gateway config ("..code..")")
 else
-	log.syslog(log.LOG_CRIT, "[swf] Failed to get gateway config ("..code..")")
+	log.syslog(log.LOG_CRIT, "[fbwifi] Failed to get gateway config ("..code..")")
 	os.exit(1)
 end
 
 obj = json.decode(body)
 
 function save_cert(name, value)
-	log.syslog(log.LOG_INFO, "[swf] Saving cert "..name)
-	local f = assert(io.open("/etc/swf/"..name, "w"))
+	log.syslog(log.LOG_INFO, "[fbwifi] Saving cert "..name)
+	local f = assert(io.open("/etc/fbwifi/"..name, "w"))
 	f:write(value)
 	f:close()
 end
@@ -32,9 +32,9 @@ function process_redirect(ix, host)
 	IP_SET = "ip addr add dev br-lan "..host
 	local result = os.execute(IP_SET)
 	if result == 0 then
-		log.syslog(log.LOG_INFO, "[swf] Redirect address applied "..host)
+		log.syslog(log.LOG_INFO, "[fbwifi] Redirect address applied "..host)
 	else
-		log.syslog(log.LOG_WARNING, "[swf] Failed to apply redirect address "..host)
+		log.syslog(log.LOG_WARNING, "[fbwifi] Failed to apply redirect address "..host)
 	end
 
 	ip = string.match(host, '([0-9\.]*)/([0-9]*)')
@@ -42,10 +42,10 @@ function process_redirect(ix, host)
 	HOSTS_RULE = string.format(RULE_FMT, ip, ip)
 	result = os.execute(HOSTS_RULE)
 	if result == 0 then
-		log.syslog(log.LOG_INFO, "[swf] Cached redirect host for DNS")
+		log.syslog(log.LOG_INFO, "[fbwifi] Cached redirect host for DNS")
 	else
-		log.syslog(log.LOG_WARNING, "[swf] Failed to amend /etc/hosts")
-		log.syslog(log.LOG_INFO, "[swf] "..HOSTS_RULE)
+		log.syslog(log.LOG_WARNING, "[fbwifi] Failed to amend /etc/hosts")
+		log.syslog(log.LOG_INFO, "[fbwifi] "..HOSTS_RULE)
 	end
 
 	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 80 -d "..ip.." -j ACCEPT # REDIRECT --to-ports 2060")
@@ -61,7 +61,7 @@ table.foreach(obj['config']['host_redirect_ips'], process_redirect)
 
 RULE_FORMAT = "iptables -t mangle -A TRAFFIC_ALLOWLIST -d %s -p %s --dport %s -j MARK --set-mark 0xfb"
 function process_traffic_rule(ix, rule)
-	log.syslog(log.LOG_INFO, "[swf] Traffic rule "..ix)
+	log.syslog(log.LOG_INFO, "[fbwifi] Traffic rule "..ix)
 	
 	if rule["protocol"] == 6 then
 		PROTO = "tcp"
@@ -71,29 +71,29 @@ function process_traffic_rule(ix, rule)
 	RULE = string.format(RULE_FORMAT, rule["ip"], PROTO, rule["port"])
 	local result = os.execute(RULE)
 	if result == 0 then
-		log.syslog(log.LOG_INFO, "[swf] Traffic rule "..ix)
+		log.syslog(log.LOG_INFO, "[fbwifi] Traffic rule "..ix)
 	else
-		log.syslog(log.LOG_WARNING, "[swf] Failed to install traffic rule ; "..RULE)
+		log.syslog(log.LOG_WARNING, "[fbwifi] Failed to install traffic rule ; "..RULE)
 	end
 end
 
 local cross_origin_list = {}
 function process_cross_origin_rule(ix, url)
-	log.syslog(log.LOG_INFO, "[swf] Cross origin rule "..url)
+	log.syslog(log.LOG_INFO, "[fbwifi] Cross origin rule "..url)
 	table.insert(cross_origin_list, url)
 end
 
 function process_url(url_purpose, fqdn)
-	log.syslog(log.LOG_INFO, "[swf] Caching "..url_purpose)
-	state:set("swf", "main", url_purpose, fqdn)	
+	log.syslog(log.LOG_INFO, "[fbwifi] Caching "..url_purpose)
+	state:set("fbwifi", "main", url_purpose, fqdn)	
 end
 
-state:set("swf", "main", "config")
+state:set("fbwifi", "main", "config")
 
 table.foreach(obj['config']['traffic_allowlist'], process_traffic_rule)
 table.foreach(obj['config']['cross_origin_allowlist'], process_cross_origin_rule)
 table.foreach(obj['config']['urls'], process_url)
-state:set("swf", "main", "cross_origin_allow_rules", cross_origin_list)
+state:set("fbwifi", "main", "cross_origin_allow_rules", cross_origin_list)
 
-state:set("swf", "main", "config_version", obj['config_version'])
-state:save('swf')
+state:set("fbwifi", "main", "config_version", obj['config_version'])
+state:save('fbwifi')

@@ -3,16 +3,16 @@
 https = require("ssl.https")
 json = require("cjson")
 log = require("posix.syslog")
-swf = require("swf")
+fbwifi = require("fbwifi")
 require("uci")
 
 state = uci.cursor(nil, "/var/state")
-GATEWAY_TOKEN = swf.gateway_token()
+GATEWAY_TOKEN = fbwifi.gateway_token()
 
 request = { 
 	tokens = {}, 
 	traffic_type = "total",
-	config_version = state:get("swf", "main", "config_version")
+	config_version = state:get("fbwifi", "main", "config_version")
 }
 
 function queue_token(client)
@@ -29,7 +29,7 @@ function queue_token(client)
 
 end
 
-state:foreach("swf", "client", queue_token)
+state:foreach("fbwifi", "client", queue_token)
 print( "\nRequest:\n"..json.encode(request) )
 
 URL="https://api.fbwifi.com/v2.0/tokens"
@@ -37,7 +37,7 @@ BODY=string.format(
 	"tokens=%s&traffic_type=%s&config_version=%s",
 	json.encode(request.tokens),
 	"'total'",
-	state:get("swf", "main", "config_version")
+	state:get("fbwifi", "main", "config_version")
 )
 
 body, code, headers = https.request(URL.."?access_token="..GATEWAY_TOKEN, BODY)
@@ -52,9 +52,9 @@ response = json.decode(body)
 --table.foreach(response.tokens,print)
 
 if response.config_valid then
-	log.syslog(log.LOG_INFO, "[swf] Config validated")
+	log.syslog(log.LOG_INFO, "[fbwifi] Config validated")
 else
-	log.syslog(log.LOG_WARN, "[swf] TODO: refresh config")
+	log.syslog(log.LOG_WARN, "[fbwifi] TODO: refresh config")
 end
 
 function process_token(token, metadata)
@@ -63,7 +63,7 @@ function process_token(token, metadata)
 		print("OK: "..token)	
 	else
 		print("Nok: "..token)	
-		swf.revoke_client_rule( token )
+		fbwifi.revoke_client_rule( token )
 	end
 end
 table.foreach(response.tokens,process_token)

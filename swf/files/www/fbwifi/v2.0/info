@@ -2,10 +2,10 @@
 require "luci.cacheloader"
 require "luci.sgi.cgi"
 json = require("cjson")
-swf = require("swf")
+fbwifi = require("fbwifi")
 
 state = uci.cursor(nil, "/var/state")
-GATEWAY_TOKEN = swf.gateway_token()
+GATEWAY_TOKEN = fbwifi.gateway_token()
 
 response = { api_version = "2.0", token = json.null }
 client_mac = ""
@@ -13,7 +13,7 @@ client_mac = ""
 function process_cors()
         origin = os.getenv("HTTP_ORIGIN")
         if string.len(origin or '') > 0 then
-                allow_list = state:get("swf", "main", "cross_origin_allow_rules")
+                allow_list = state:get("fbwifi", "main", "cross_origin_allow_rules")
                 for _, value in pairs(allow_list) do
                         if value == origin then
                                 print("Access-Control-Allow-Origin: "..origin)
@@ -41,7 +41,7 @@ function getClientToken(client_ip)
 	f = io.popen("awk '/"..client_ip.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
 	client_mac = assert(f:read('*a'))
 
-	state:foreach("swf", "client", map_remote_mac_to_token)
+	state:foreach("fbwifi", "client", map_remote_mac_to_token)
 end
 
 function getGatewayId()

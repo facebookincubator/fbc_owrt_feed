@@ -9,7 +9,7 @@ token = ""
 response = {}
 response['venue-info-url'] = string.format(
 	"%s&source=capport",
-	state:get("swf", "main", "landing_page_url")
+	state:get("fbwifi", "main", "landing_page_url")
 )
 
 function map_remote_mac_to_token(client)
@@ -27,7 +27,7 @@ end
 function hasValidToken(client_ip)
 	f = io.popen("awk '/"..client_ip.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
 	client_mac = assert(f:read('*a'))
-	state:foreach("swf", "client", map_remote_mac_to_token)
+	state:foreach("fbwifi", "client", map_remote_mac_to_token)
 
 	return 0 < string.len(token)
 end
@@ -38,7 +38,7 @@ client = os.getenv("REMOTE_ADDR")
 response['captive'] = not hasValidToken(client)
 
 if response['captive'] then
-	response['user-portal-url'] = state:get("swf", "main", "captive_portal_url")
+	response['user-portal-url'] = state:get("fbwifi", "main", "captive_portal_url")
 end
 
 print( json.encode(response) )

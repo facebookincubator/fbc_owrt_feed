@@ -9,7 +9,7 @@
 <%
 	require("uci")
 	state = uci.cursor(nil, "/var/state")
-	url = state:get("swf", "main", "captive_portal_config_url")
+	url = state:get("fbwifi", "main", "captive_portal_config_url")
 %>
 <a href="<% print(url) %>">Configure FB business page</a>
 
