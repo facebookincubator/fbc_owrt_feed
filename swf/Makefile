@@ -8,7 +8,7 @@
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=swf
+PKG_NAME:=fbwifi
 PKG_VERSION:=2
 PKG_RELEASE:=0
 PKG_LICENSE:=GPL-2.0
@@ -19,7 +19,7 @@ PKG_BUILD_DIR := $(BUILD_DIR)/$(PKG_NAME)
 
 include $(INCLUDE_DIR)/package.mk
 
-define Package/swf
+define Package/fbwifi
   SUBMENU:=Captive Portals
   SECTION:=net
   CATEGORY:=Network
@@ -32,11 +32,11 @@ define Package/swf
   PKGARCH:=all
 endef
 
-define Package/swf/description
+define Package/fbwifi/description
   Facebook Social Wi-Fi, an AP authorisation solution 
 endef
 
-#define Package/swf/conffiles
+#define Package/fbwifi/conffiles
 #/etc/config/qos
 #endef
 
@@ -49,9 +49,9 @@ endef
 define Build/Compile
 endef
 
-define Package/swf/install
+define Package/fbwifi/install
 	$(INSTALL_DIR) $(1)
 	$(CP) ./files/* $(1)/
 endef
 
-$(eval $(call BuildPackage,swf))
+$(eval $(call BuildPackage,fbwifi))

@@ -1,37 +1,41 @@
 #!/usr/bin/lua
 require("uci")
 log = require("posix.syslog")
-swf = require("swf")
+fbwifi = require("fbwifi")
 
 state = uci.cursor(nil, "/var/state")
 function process_cors()
 	origin = os.getenv("HTTP_ORIGIN")
+	log.syslog(log.LOG_INFO, string.format("[fbwifi] [auth] process_cors origin %s", origin or '! unknown !') )
 	if string.len(origin or '') > 0 then
-		allow_list = state:get("swf", "main", "cross_origin_allow_rules")
+		allow_list = state:get("fbwifi", "main", "cross_origin_allow_rules")
 		for _, value in pairs(allow_list) do
     			if value == origin then
+				log.syslog(log.LOG_INFO, "[fbwifi] [auth] process_cors Appending CORS Headers to HTTP")
 				print("Access-Control-Allow-Origin: "..origin)
 				print("Vary: Origin")
 				break
 			end
 		end
+	else	
+		log.syslog(log.LOG_WARNING, "[fbwifi] [auth] process_cors Origin Header not found in HTTP Request")
 	end
 end
 
 method = os.getenv("REQUEST_METHOD")
 if method == 'GET' then
+	log.syslog(log.LOG_INFO, "[fbwifi] [auth] GET handler")
 	print("Status: 302")
-	print("Location: "..state:get("swf", "main", "landing_page_url"))
+	print("Location: "..state:get("fbwifi", "main", "landing_page_url"))
 	process_cors()
 	print ('\n')
 
 elseif method == 'POST' then
 	local token
-	log.syslog(log.LOG_INFO, "[swf] auth POST before process_cors")
 	
+	log.syslog(log.LOG_INFO, "[fbwifi] [auth] POST handler")
 	process_cors()
 	print("Status: 200")
-	log.syslog(log.LOG_INFO, "[swf] auth POST after process_cors")
 
 	form_data=io.read()
 	while form_data do
@@ -42,18 +46,18 @@ elseif method == 'POST' then
 			f = io.popen("awk '/"..client.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
 			client_mac = assert(f:read('*a'))
 
-			if swf.validate_token(token) then
-                                log.syslog(log.LOG_INFO, string.format( "[swf] auth POST valid token (%s) for mac (%s)", token or 'nil', client_mac or 'nil') )
-				swf.instate_client_rule(token, client_mac)
+			if fbwifi.validate_token(token) then
+                                log.syslog(log.LOG_INFO, string.format( "[fbwifi] [auth] POST handler : Validating Token (%s) for MAC (%s)", token or 'nil', client_mac or 'nil') )
+				fbwifi.instate_client_rule(token, client_mac)
 				print("\n{\"valid\":true}")
 			else
-                                log.syslog(log.LOG_INFO, string.format( "[swf] auth POST invalid token (%s) for mac (%s)", token or 'nil', client_mac or 'nil') )
-				swf.revoke_client_rule(token)
+                                log.syslog(log.LOG_WARNING, string.format( "[fbwifi] [auth] POST handler : ! Invalid token (%s) for mac (%s) !", token or 'nil', client_mac or 'nil') )
+				fbwifi.revoke_client_rule(token)
 				print("\n{\"valid\":false}")
 			end
 		else
-                        log.syslog(log.LOG_INFO, string.format("[swf] auth POST unexpected token (%s) ", token or 'nil' ))
-			swf.revoke_client_rule(token)
+                        log.syslog(log.LOG_WARNING, string.format("[fbwifi] [auth] POST handler : unexpected token (%s) ", token or 'nil' ))
+			fbwifi.revoke_client_rule(token)
 			print("\n{\"valid\":false}")
 		end
 
