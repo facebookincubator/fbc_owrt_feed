@@ -54,7 +54,13 @@ response = json.decode(body)
 if response.config_valid then
 	log.syslog(log.LOG_INFO, "[fbwifi] Config validated")
 else
-	log.syslog(log.LOG_WARN, "[fbwifi] TODO: refresh config")
+	log.syslog(log.LOG_WARNING, "[fbwifi] config is stale, refreshing config")
+        local result = os.execute("/etc/init.d/fbwifi restart")
+        if result == 0 then
+                log.syslog(log.LOG_INFO, "[fbwifi] init.d fbwifi restarted successfully to fetch and update fresh config ")
+        else
+                log.syslog(log.LOG_WARNING, "[fbwifi] init.d fbwifi failed to restart. Possible stale config")
+        end
 end
 
 function process_token(token, metadata)

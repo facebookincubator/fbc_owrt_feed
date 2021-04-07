@@ -16,7 +16,6 @@ amend_iptables_init() {
 	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -m mark --mark 0xfb -j ACCEPT
 	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -j REDIRECT --to-ports "$FBWIFI_PORT"
 	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 443 -m mark --mark 0xfb -j ACCEPT
-	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 443 -j REDIRECT --to-ports "$FBWIFI_HTTPS_PORT"
 
 	# Accept redirected traffic
 	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$FBWIFI_PORT" -j ACCEPT
