@@ -55,10 +55,11 @@ elseif method == 'POST' then
 				fbwifi.revoke_client_rule(token)
 				print("\n{\"valid\":false}")
 			end
-		else
-                        log.syslog(log.LOG_WARNING, string.format("[fbwifi] [auth] POST handler : unexpected token (%s) ", token or 'nil' ))
-			fbwifi.revoke_client_rule(token)
-			print("\n{\"valid\":false}")
+			log.syslog(log.LOG_INFO, "[fbwifi] [auth] POST handler completed")
+		--else
+                --        log.syslog(log.LOG_WARNING, string.format("[fbwifi] [auth] POST handler : unexpected token (%s) ", token or 'nil' ))
+		--	fbwifi.revoke_client_rule(token)
+		--	print("\n{\"valid\":false}")
 		end
 
 		form_data=io.read()
