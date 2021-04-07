@@ -43,7 +43,7 @@ function fbwifi.validate_token( token )
 end
 
 local mac_to_purge=''
-function fbwifi.remove_client_by_mac(client)
+function remove_client_by_mac(client)
 	state = uci.cursor(nil, "/var/state")
 
 	for key, value in pairs(client) do
@@ -51,7 +51,8 @@ function fbwifi.remove_client_by_mac(client)
 			key == 'mac' and
 			value == mac_to_purge
 		then
-			state:delete("fbwifi", client['._name'])
+			log.syslog(log.LOG_INFO, string.format("[fbwifi] Purging DB entry %s for MAC %s", client['.name'] or 'unknown', mac_to_purge) )
+			state:delete("fbwifi", client['.name'])
 			return
 		end
 	end
@@ -59,7 +60,7 @@ end
 
 function fbwifi.instate_client_rule( token, client_mac )
 
-	log.syslog(log.LOG_INFO, "[fbwifi] Validated client "..client_mac)
+	log.syslog(log.LOG_INFO, "[fbwifi] Validating client "..client_mac)
 
 	state = uci.cursor(nil, "/var/state")
 	state_name = "token_" .. token
@@ -68,9 +69,12 @@ function fbwifi.instate_client_rule( token, client_mac )
 	RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
 	local RULE
 
+	log.syslog(log.LOG_INFO, string.format("[fbwifi] Cleaning DB for MAC %s", client_mac) )
 	mac_to_purge = client_mac
 	state:foreach("fbwifi", "client", remove_client_by_mac)
 	
+		
+	log.syslog(log.LOG_INFO, string.format("[fbwifi] Adding DB entry %s for MAC %s", state_name, client_mac) )
 	state:set("fbwifi", state_name, "client")
 	state:set("fbwifi", state_name, "token", token)
 	state:set("fbwifi", state_name, "mac", client_mac)
@@ -80,6 +84,7 @@ function fbwifi.instate_client_rule( token, client_mac )
 	--   OR install it
 	RULE=string.format(RULE_COND.." || "..RULE_FMT, client_mac, "A", client_mac)
 
+	log.syslog(log.LOG_INFO, string.format( "[fbwifi] Opening iptables for %s", client_mac ) )
 	res = os.execute(RULE)
 	if res ~= 0 then 
 		log.syslog(log.LOG_WARNING, string.format( "[fbwifi] Failed to update iptables (%s)", res ) )
