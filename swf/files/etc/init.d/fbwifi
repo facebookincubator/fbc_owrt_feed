@@ -94,6 +94,7 @@ start_service() {
 
 	/usr/sbin/fbwifi_get_config
 	
+	/etc/init.d/lighttpd reload
 	generate_lighttpd_config
         procd_open_instance
         procd_set_param command $PROG -D -f /etc/lighttpd/fbwifi_redirect.conf
