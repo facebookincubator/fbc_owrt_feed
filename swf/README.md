@@ -16,6 +16,7 @@ The folder structure follows *nix conventions :
 'usr' contains procedural scripts, lua common code module and GUI prototype for luci
 'www' contains the HTTP endpoints as CGI handlers 
 
+```
 files/
 ├── etc
 │   ├── config
@@ -49,4 +50,4 @@ files/
             ├── auth
             ├── capport
             └── info
-
+```
