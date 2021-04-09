@@ -12,9 +12,9 @@ The 'files' subdirectory contains all the configuration, script and code
 that implements the Facebook Wi-Fi v2.0 standard for OpenWRT.
 
 The folder structure follows *nix conventions :
-'etc' is the boot time scripts and configuration
-'usr' contains procedural scripts, lua common code module and GUI prototype for luci
-'www' contains the HTTP endpoints as CGI handlers 
+- 'etc' is the boot time scripts and configuration
+- 'usr' contains procedural scripts, lua common code module and GUI prototype for luci
+- 'www' contains the HTTP endpoints as CGI handlers 
 
 ```
 files/
