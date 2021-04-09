@@ -7,10 +7,7 @@ client_mac = ""
 token = ""
 
 response = {}
-response['venue-info-url'] = string.format(
-	"%s&source=capport",
-	state:get("fbwifi", "main", "landing_page_url")
-)
+response['venue-info-url'] = state:get("fbwifi", "main", "capport_venue_info_url")
 
 function map_remote_mac_to_token(client)
         for key, value in pairs(client) do
