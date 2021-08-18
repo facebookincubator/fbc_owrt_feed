@@ -28,12 +28,12 @@ define Package/fbwifi
 	+luci-base +libuci-lua +luaposix \
 	+luci-mod-network +luci-mod-status +luci-theme-bootstrap \
 	+lighttpd-mod-openssl +lua-cjson
-  TITLE:=Social Wi-Fi by Facebook
+  TITLE:=Facebook Wi-Fi
   PKGARCH:=all
 endef
 
 define Package/fbwifi/description
-  Facebook Social Wi-Fi, an AP authorisation solution 
+  Facebook Wi-Fi, an AP authorisation solution
 endef
 
 #define Package/fbwifi/conffiles

@@ -4,7 +4,7 @@
 
 Case studies for OEM customers are available at the official page of [Facebook Wi-Fi](https://www.facebook.com/facebook-wifi).
 
-For OEM engineers, start by reading the init script in [files/etc/init.d/fbwifi](https://github.com/facebookincubator/fbc_owrt_feed/blob/master/swf/files/etc/init.d/fbwifi)
+For OEM engineers, start by reading the init script in [files/etc/init.d/fbwifi](https://github.com/facebookincubator/fbc_owrt_feed/blob/master/fbwifi/files/etc/init.d/fbwifi)
 
 ## Contents
 
@@ -20,14 +20,13 @@ The folder structure follows *nix conventions :
 files/
 ├── etc
 │   ├── config
-│   │   ├── fbwifi
-│   │   └── swf
+│   │   └── fbwifi
 │   ├── init.d
 │   │   └── fbwifi
 │   └── lighttpd
 │       ├── conf.d
 │       │   ├── 35-https.conf
-│       │   ├── 40-swf.conf
+│       │   ├── 40-fbwifi.conf
 │       │   └── 90-luci.conf
 │       └── fbwifi_redirect.conf -> /var/run/fbwifi_redirect.conf
 ├── usr

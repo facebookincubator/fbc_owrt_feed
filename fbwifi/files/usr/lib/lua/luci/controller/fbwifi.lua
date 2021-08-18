@@ -7,6 +7,6 @@ sys = require "luci.sys"
 ut = require "luci.util"
 
 function index()
-    entry({"admin", "network", "fbwifi"}, template("fbwifi"), "Social Wi-Fi", 90).dependent=false
+    entry({"admin", "network", "fbwifi"}, template("fbwifi"), "Facebook Wi-Fi", 90).dependent=false
 end
 
