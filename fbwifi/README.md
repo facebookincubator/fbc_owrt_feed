@@ -1,4 +1,4 @@
-# Facebook Wi-Fi v2.0 Reference Implementation for OpenWRT 
+# Facebook Wi-Fi v2.0 Reference Implementation for OpenWrt 
 
 ## Getting started
 
@@ -9,7 +9,7 @@ For OEM engineers, start by reading the init script in [files/etc/init.d/fbwifi]
 ## Contents
 
 The 'files' subdirectory contains all the configuration, script and code 
-that implements the Facebook Wi-Fi v2.0 standard for OpenWRT.
+that implements the Facebook Wi-Fi v2.0 standard for OpenWrt.
 
 The folder structure follows *nix conventions :
 - 'etc' is the boot time scripts and configuration
