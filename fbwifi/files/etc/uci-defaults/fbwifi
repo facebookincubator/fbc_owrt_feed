@@ -2,6 +2,7 @@
 
 uci -q batch <<-EOF
 	delete firewall.fbwifi
+	set firewall.fbwifi.enabled=0
 	set firewall.fbwifi.family=ipv4
 	set firewall.fbwifi=include
 	set firewall.fbwifi.path=/usr/share/fbwifi/firewall.include
