@@ -65,8 +65,8 @@ function fbwifi.instate_client_rule( token, client_mac )
 	state = uci.cursor(nil, "/var/state")
 	state_name = "token_" .. token
 
-	RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
-	RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
+	RULE_COND="iptables -w -L FBWIFI_CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
+	RULE_FMT="iptables -w -t mangle -%s FBWIFI_CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
 	local RULE
 
 	log.syslog(log.LOG_INFO, string.format("[fbwifi] Cleaning DB for MAC %s", client_mac) )
@@ -109,8 +109,8 @@ function fbwifi.revoke_client_rule( token )
 	client_mac = state:get("fbwifi", state_name, "mac")
 
 	if client_mac then
-		RULE_COND="iptables -w -L CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
-		RULE_FMT="iptables -w -t mangle -%s CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
+		RULE_COND="iptables -w -L FBWIFI_CLIENT_TO_INTERNET -t mangle | grep -i -q \"%s\""
+		RULE_FMT="iptables -w -t mangle -%s FBWIFI_CLIENT_TO_INTERNET -m mac --mac-source \"%s\" -j MARK --set-mark 0xfb"
 
 		-- verify a rule exists for the given client MAC, 
 		--  AND delete it

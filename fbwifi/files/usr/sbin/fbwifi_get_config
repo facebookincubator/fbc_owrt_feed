@@ -51,9 +51,9 @@ function process_redirect(ix, host)
 		log.syslog(log.LOG_INFO, "[fbwifi] "..HOSTS_RULE)
 	end
 
-	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 80 -d "..ip.." -j ACCEPT # REDIRECT --to-ports "..http_port)
+	result = os.execute("iptables -t nat -A FBWIFI_HOST_REDIRLIST -p tcp --dport 80 -d "..ip.." -j ACCEPT # REDIRECT --to-ports "..http_port)
 	--print(result)
-	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 443 -d "..ip.."  -j ACCEPT # REDIRECT --to-ports "..https_port)
+	result = os.execute("iptables -t nat -A FBWIFI_HOST_REDIRLIST -p tcp --dport 443 -d "..ip.."  -j ACCEPT # REDIRECT --to-ports "..https_port)
 	--print(result)
 end
 
@@ -62,7 +62,7 @@ save_cert("https_server_key", obj['config']['https_server_key'])
 
 table.foreach(obj['config']['host_redirect_ips'], process_redirect)
 
-RULE_FORMAT = "iptables -t mangle -A TRAFFIC_ALLOWLIST -d %s -p %s --dport %s -j MARK --set-mark 0xfb"
+RULE_FORMAT = "iptables -t mangle -A FBWIFI_TRAFFIC_ALLOWLIST -d %s -p %s --dport %s -j MARK --set-mark 0xfb"
 function process_traffic_rule(ix, rule)
 	log.syslog(log.LOG_INFO, "[fbwifi] Traffic rule "..ix)
 	

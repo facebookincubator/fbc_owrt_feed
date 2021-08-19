@@ -5,37 +5,6 @@ START=90
 USE_PROCD=1
 PROG=/usr/sbin/lighttpd
 
-IFACE="br-lan"
-
-amend_iptables_init() {
-	# create and set up redirection chains
-	iptables -w -t nat -N CLIENT_TO_INTERNET
-	iptables -w -t nat -A PREROUTING -i "$IFACE" -j CLIENT_TO_INTERNET
-	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -m mark --mark 0xfb -j ACCEPT
-	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -j REDIRECT --to-ports "$http_port"
-	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 443 -m mark --mark 0xfb -j ACCEPT
-
-	# Accept redirected traffic
-	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$http_port" -j ACCEPT
-	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$https_port" -j ACCEPT
-
-	# create and prepend marking chains (add/del user scpripts use this chain)
-	iptables -w -t mangle -N CLIENT_TO_INTERNET
-	iptables -w -t mangle -I PREROUTING 1 -i "$IFACE" -j CLIENT_TO_INTERNET
-
-	# v2.0 redirection
-	iptables -w -t nat -N HOST_REDIRLIST
-	iptables -w -t nat -I CLIENT_TO_INTERNET 1 -p tcp -i "$IFACE" --dport 80 -j HOST_REDIRLIST
-	iptables -w -t nat -I CLIENT_TO_INTERNET 2 -p tcp -i "$IFACE" --dport 443 -j HOST_REDIRLIST
-
-	iptables -w -t mangle -N TRAFFIC_ALLOWLIST
-	iptables -w -t mangle -I PREROUTING 2 -i "$IFACE" -j TRAFFIC_ALLOWLIST
-
-	iptables -w -t filter -I FORWARD 1 -p udp -i "$IFACE" --dport 53 -j ACCEPT
-	iptables -w -t filter -I FORWARD 2 -i "$IFACE" -m mark --mark 0xfb -j ACCEPT
-	iptables -w -t filter -A FORWARD -i "$IFACE" -j DROP
-}
-
 generate_lighttpd_config() {
 
 	config_load fbwifi
@@ -100,7 +69,6 @@ start_service() {
 	update_crontab
 
 	/etc/init.d/firewall restart
-	amend_iptables_init
 
 	/usr/sbin/fbwifi_get_config
 	

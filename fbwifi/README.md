@@ -23,12 +23,14 @@ files/
 │   │   └── fbwifi
 │   ├── init.d
 │   │   └── fbwifi
-│   └── lighttpd
-│       ├── conf.d
-│       │   ├── 35-https.conf
-│       │   ├── 40-fbwifi.conf
-│       │   └── 90-luci.conf
-│       └── fbwifi_redirect.conf -> /var/run/fbwifi_redirect.conf
+│   ├── lighttpd
+│   │   ├── conf.d
+│   │   │   ├── 35-https.conf
+│   │   │   ├── 40-fbwifi.conf
+│   │   │   └── 90-luci.conf
+│   │   └── fbwifi_redirect.conf -> /var/run/fbwifi_redirect.conf
+│   └── uci-defaults
+│       └── fbwifi
 ├── usr
 │   ├── lib
 │   │   └── lua
@@ -38,11 +40,14 @@ files/
 │   │           │   └── fbwifi.lua
 │   │           └── view
 │   │               └── fbwifi.htm
-│   └── sbin
-│       ├── fbwifi_debug_dump
-│       ├── fbwifi_gateway_info_update
-│       ├── fbwifi_get_config
-│       └── fbwifi_validate_token_db
+│   ├── sbin
+│   │   ├── fbwifi_debug_dump
+│   │   ├── fbwifi_gateway_info_update
+│   │   ├── fbwifi_get_config
+│   │   └── fbwifi_validate_token_db
+│   └── share
+│       └── fbwifi
+│           └── firewall.include
 └── www
     └── fbwifi
         └── v2.0
