@@ -6,20 +6,18 @@ USE_PROCD=1
 PROG=/usr/sbin/lighttpd
 
 IFACE="br-lan"
-FBWIFI_PORT=2060
-FBWIFI_HTTPS_PORT=2061
 
 amend_iptables_init() {
 	# create and set up redirection chains
 	iptables -w -t nat -N CLIENT_TO_INTERNET
 	iptables -w -t nat -A PREROUTING -i "$IFACE" -j CLIENT_TO_INTERNET
 	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -m mark --mark 0xfb -j ACCEPT
-	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -j REDIRECT --to-ports "$FBWIFI_PORT"
+	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 80 -j REDIRECT --to-ports "$http_port"
 	iptables -w -t nat -A CLIENT_TO_INTERNET -p tcp -i "$IFACE" --dport 443 -m mark --mark 0xfb -j ACCEPT
 
 	# Accept redirected traffic
-	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$FBWIFI_PORT" -j ACCEPT
-	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$FBWIFI_HTTPS_PORT" -j ACCEPT
+	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$http_port" -j ACCEPT
+	iptables -w -t filter -I INPUT 1 -i "$IFACE" -p tcp --dport "$https_port" -j ACCEPT
 
 	# create and prepend marking chains (add/del user scpripts use this chain)
 	iptables -w -t mangle -N CLIENT_TO_INTERNET
@@ -44,12 +42,12 @@ generate_lighttpd_config() {
 	config_get login_url 'main' 'captive_portal_url'
 
 	cat << EOF > /var/run/fbwifi_redirect.conf
-server.port = $FBWIFI_PORT
+server.port = $http_port
 server.document-root = "/tmp"
 server.modules += ( "mod_redirect" )
 server.modules += ( "mod_openssl" )
 
-\$SERVER["socket"] == ":$FBWIFI_HTTPS_PORT" {
+\$SERVER["socket"] == ":$https_port" {
     ssl.engine = "enable"
     ssl.pemfile = "/etc/fbwifi/https_server_cert"
     ssl.privkey = "/etc/fbwifi/https_server_key"
@@ -76,6 +74,18 @@ start_service() {
 	config_load fbwifi
 	config_get_bool enabled 'main' 'enabled' '0'
 	[ "$enabled" -eq 0 ] && return
+
+	config_get http_port main http_port
+	[ -z "$http_port" ] && {
+		logger -t fbwifi "required option http_port not set"
+		exit 1
+	}
+
+	config_get https_port main https_port
+	[ -z "$https_port" ] && {
+		logger -t fbwifi "required option https_port not set"
+		exit 1
+	}
 
 	logger "[fbwifi] Enabled; starting"
 	

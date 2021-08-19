@@ -1,3 +1,5 @@
-config config 'main'
+config fbwifi 'main'
 	option enabled '1'
 	option gateway_token 'FBWIFI:GATEWAY|123456789|0123456789|abcdeABCDE123456789'
+	option http_port '2060'
+	option https_port '2061'

@@ -7,6 +7,9 @@ fbwifi = require("fbwifi")
 
 GATEWAY_TOKEN = fbwifi.gateway_token()
 
+http_port = uci.get("fbwifi.main.http_port")
+https_port = uci.get("fbwifi.main.https_port")
+
 state = uci.cursor(nil, "/var/state")
 
 URL="https://api.fbwifi.com/v2.0/gateway"
@@ -48,9 +51,9 @@ function process_redirect(ix, host)
 		log.syslog(log.LOG_INFO, "[fbwifi] "..HOSTS_RULE)
 	end
 
-	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 80 -d "..ip.." -j ACCEPT # REDIRECT --to-ports 2060")
+	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 80 -d "..ip.." -j ACCEPT # REDIRECT --to-ports "..http_port)
 	--print(result)
-	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 443 -d "..ip.."  -j ACCEPT # REDIRECT --to-ports 2061")
+	result = os.execute("iptables -t nat -A HOST_REDIRLIST -p tcp --dport 443 -d "..ip.."  -j ACCEPT # REDIRECT --to-ports "..https_port)
 	--print(result)
 end
 
