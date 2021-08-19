@@ -29,7 +29,7 @@ function save_cert(name, value)
 end
 
 function process_redirect(ix, host)
-	IP_SET = "ip addr add dev br-lan "..host
+	IP_SET = "ip addr replace dev lo "..host
 	local result = os.execute(IP_SET)
 	if result == 0 then
 		log.syslog(log.LOG_INFO, "[fbwifi] Redirect address applied "..host)
