@@ -1,7 +1,5 @@
 #!/bin/sh
 
-FBWIFI_ZONE="lan"
-IFACE="br-lan"
 IPT4="/usr/sbin/iptables"
 
 [ "$(uci get fbwifi.main.enabled)" -eq 1 ] || exit 0
@@ -17,6 +15,14 @@ fbwifi_https_port="$(uci get fbwifi.main.https_port)"
 	logger -t fbwifi "required option https_port not set"
 	exit 1
 }
+
+fbwifi_zone="$(uci get fbwifi.main.zone)"
+[ -n "$fbwifi_zone" ] || {
+	logger -t fbwifi "required option zone  not set"
+	exit 1
+}
+
+fbwifi_ifaces="$(fw3 -q zone "$fbwifi_zone")"
 
 ## Create custom chains
 $IPT4 -t filter -N FBWIFI_FORWARD 2>/dev/null
@@ -54,8 +60,10 @@ $IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p tcp --dport 443 -m conntrack --ctst
 $IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p tcp --dport 80 -m conntrack --ctstate NEW -j REDIRECT --to-ports "$fbwifi_http_port"
 
 ## Hook custom chains in firewall3 chains
-$IPT4 -t filter -I "zone_${FBWIFI_ZONE}_input" 2 -j FBWIFI_INPUT
-$IPT4 -t filter -I "zone_${FBWIFI_ZONE}_forward" 2 -j FBWIFI_FORWARD
-$IPT4 -t nat -I "zone_${FBWIFI_ZONE}_prerouting" 2 -j FBWIFI_PREROUTING
-# There are no firewall3 zone chains in the mangle table
-$IPT4 -t mangle -I PREROUTING -i "$IFACE" -j FBWIFI_PREROUTING
+$IPT4 -t filter -I "zone_${fbwifi_zone}_input" 2 -j FBWIFI_INPUT
+$IPT4 -t filter -I "zone_${fbwifi_zone}_forward" 2 -j FBWIFI_FORWARD
+$IPT4 -t nat -I "zone_${fbwifi_zone}_prerouting" 2 -j FBWIFI_PREROUTING
+# There are no firewall3 zone chains in the mangle table so we need to do this for all interfaces in the zone
+for iface in $fbwifi_ifaces; do
+	$IPT4 -t mangle -I PREROUTING -i "$iface" -j FBWIFI_PREROUTING
+done
