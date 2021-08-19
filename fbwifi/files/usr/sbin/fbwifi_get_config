@@ -26,7 +26,7 @@ obj = json.decode(body)
 
 function save_cert(name, value)
 	log.syslog(log.LOG_INFO, "[fbwifi] Saving cert "..name)
-	local f = assert(io.open("/etc/fbwifi/"..name, "w"))
+	local f = assert(io.open("/tmp/fbwifi/"..name, "w"))
 	f:write(value)
 	f:close()
 end

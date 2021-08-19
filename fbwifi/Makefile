@@ -24,10 +24,9 @@ define Package/fbwifi
   SECTION:=net
   CATEGORY:=Network
   DEPENDS:=+iptables +luasec +luasocket \
-	+lighttpd +lighttpd-mod-cgi +lighttpd-mod-redirect \
 	+luci-base +libuci-lua +luaposix \
 	+luci-mod-network +luci-mod-status +luci-theme-bootstrap \
-	+lighttpd-mod-openssl +lua-cjson
+	+lua-cjson +uhttpd
   TITLE:=Facebook Wi-Fi
   PKGARCH:=all
 endef

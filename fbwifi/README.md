@@ -21,14 +21,8 @@ files/
 ├── etc
 │   ├── config
 │   │   └── fbwifi
-│   ├── init.d
-│   │   └── fbwifi
-│   └─── lighttpd
-│       ├── conf.d
-│       │   ├── 35-https.conf
-│       │   ├── 40-fbwifi.conf
-│       │   └── 90-luci.conf
-│       └── fbwifi_redirect.conf -> /var/run/fbwifi_redirect.conf
+│   └── init.d
+│       └── fbwifi
 ├── usr
 │   ├── lib
 │   │   └── lua
@@ -46,11 +40,13 @@ files/
 │   │   └── fbwifi_validate_token_db
 │   └── share
 │       └── fbwifi
-│           └── firewall.include
+│           ├── firewall.include
+│           └── uhttpd.json
 └── www
-    └── fbwifi
-        └── v2.0
-            ├── auth
-            ├── capport
-            └── info
+    └── cgi-bin
+        └── fbwifi
+            └── v2.0
+                ├── auth
+                ├── capport
+                └── info
 ```

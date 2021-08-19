@@ -3,30 +3,6 @@
 START=90
 
 USE_PROCD=1
-PROG=/usr/sbin/lighttpd
-
-generate_lighttpd_config() {
-
-	config_load fbwifi
-	config_get login_url 'main' 'captive_portal_url'
-
-	cat << EOF > /var/run/fbwifi_redirect.conf
-server.port = $http_port
-server.document-root = "/tmp"
-server.modules += ( "mod_redirect" )
-server.modules += ( "mod_openssl" )
-
-\$SERVER["socket"] == ":$https_port" {
-    ssl.engine = "enable"
-    ssl.pemfile = "/etc/fbwifi/https_server_cert"
-    ssl.privkey = "/etc/fbwifi/https_server_key"
-}
-
-url.redirect = ("" => "${login_url}")
-url.redirect-code = 302
-EOF
-
-}
 
 update_crontab() {
 	WIP=$( mktemp )
@@ -65,22 +41,19 @@ start_service() {
 	}
 
 	logger "[fbwifi] Enabled; starting"
-	
-	mkdir -p /etc/fbwifi
 
-        user_exists http || user_add http
-        [ -d /var/log/lighttpd ] || {
-                mkdir -m 0775 -p /var/log/lighttpd
-                chgrp www-data /var/log/lighttpd
-        }
+	mkdir -p /tmp/fbwifi
 
 	update_crontab
 
 	/usr/sbin/fbwifi_get_config
-	
-	/etc/init.d/lighttpd reload
-	generate_lighttpd_config
-        procd_open_instance
-        procd_set_param command $PROG -D -f /etc/lighttpd/fbwifi_redirect.conf
-        procd_close_instance
+
+	login_url=$(uci -p /var/state get fbwifi.main.captive_portal_url)
+	[ -z "$login_url" ] && {
+		logger -t fbwifi "captive_portal_url not available yet"
+		exit 1
+	}
+	printf '{ "request": [ ["redirect", "%s", 302] ] }' "$login_url" > /tmp/fbwifi/uhttpd-redirect.json
+
+	/etc/init.d/uhttpd restart
 }
