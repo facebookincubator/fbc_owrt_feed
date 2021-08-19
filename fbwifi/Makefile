@@ -36,9 +36,9 @@ define Package/fbwifi/description
   Facebook Wi-Fi, an AP authorisation solution
 endef
 
-#define Package/fbwifi/conffiles
-#/etc/config/qos
-#endef
+define Package/fbwifi/conffiles
+/etc/config/fbwifi
+endef
 
 define Build/Prepare
 endef
