@@ -21,8 +21,11 @@ files/
 ├── etc
 │   ├── config
 │   │   └── fbwifi
-│   └── init.d
-│       └── fbwifi
+│   ├── hotplug.d
+│   │   └── iface
+│   │       └── 50-fbwifi
+│   ├── init.d
+│   │   └── fbwifi
 ├── usr
 │   ├── lib
 │   │   └── lua
