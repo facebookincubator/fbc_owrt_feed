@@ -75,7 +75,7 @@ start_service() {
 
 	config_load fbwifi
 	config_get_bool enabled 'main' 'enabled' '0'
-	[ $enabled = 0 ] && return
+	[ "$enabled" -eq 0 ] && return
 
 	logger "[fbwifi] Enabled; starting"
 	
