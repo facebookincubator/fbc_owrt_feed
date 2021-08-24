@@ -2,8 +2,6 @@
 
 IPT4="/usr/sbin/iptables"
 
-[ "$(uci get fbwifi.main.enabled)" -eq 1 ] || exit 0
-
 fbwifi_http_port="$(uci get fbwifi.main.http_port)"
 [ -n "$fbwifi_http_port" ] || {
 	logger -t fbwifi "required option http_port not set"

@@ -38,6 +38,14 @@ update_crontab() {
 	/etc/init.d/cron restart
 }
 
+reload_service() {
+	restart
+}
+
+service_triggers() {
+	procd_add_reload_trigger fbwifi
+}
+
 start_service() {
 
 	config_load fbwifi
@@ -67,8 +75,6 @@ start_service() {
         }
 
 	update_crontab
-
-	/etc/init.d/firewall restart
 
 	/usr/sbin/fbwifi_get_config
 	

@@ -1,0 +1,22 @@
+#!/bin/sh
+
+case "$1" in
+disable)
+	uci set fbwifi.main.enabled=0
+
+	uci delete firewall.fbwifi
+	;;
+enable)
+	uci set fbwifi.main.enabled=1
+
+	uci set firewall.fbwifi=include
+	uci set firewall.fbwifi.enabled=1
+	uci set firewall.fbwifi.family=ipv4
+	uci set firewall.fbwifi.path=/usr/share/fbwifi/firewall.include
+	uci set firewall.fbwifi.reload=1
+	uci set firewall.fbwifi.type=script
+	;;
+esac
+
+uci commit
+reload_config

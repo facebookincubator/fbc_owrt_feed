@@ -23,14 +23,12 @@ files/
 │   │   └── fbwifi
 │   ├── init.d
 │   │   └── fbwifi
-│   ├── lighttpd
-│   │   ├── conf.d
-│   │   │   ├── 35-https.conf
-│   │   │   ├── 40-fbwifi.conf
-│   │   │   └── 90-luci.conf
-│   │   └── fbwifi_redirect.conf -> /var/run/fbwifi_redirect.conf
-│   └── uci-defaults
-│       └── fbwifi
+│   └─── lighttpd
+│       ├── conf.d
+│       │   ├── 35-https.conf
+│       │   ├── 40-fbwifi.conf
+│       │   └── 90-luci.conf
+│       └── fbwifi_redirect.conf -> /var/run/fbwifi_redirect.conf
 ├── usr
 │   ├── lib
 │   │   └── lua
@@ -41,6 +39,7 @@ files/
 │   │           └── view
 │   │               └── fbwifi.htm
 │   ├── sbin
+│   │   ├── fbwifi
 │   │   ├── fbwifi_debug_dump
 │   │   ├── fbwifi_gateway_info_update
 │   │   ├── fbwifi_get_config
