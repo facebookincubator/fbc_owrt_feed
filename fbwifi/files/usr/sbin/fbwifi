@@ -36,7 +36,22 @@ enable)
 	uci set uhttpd.main.key='/tmp/fbwifi/https_server_key'
 	uci set uhttpd.main.rfc1918_filter=0
 	;;
+reload)
+	/usr/sbin/fbwifi_get_config
+
+	login_url=$(uci -p /var/state get fbwifi.main.captive_portal_url)
+	[ -z "$login_url" ] && {
+		logger -t fbwifi "captive_portal_url not available yet"
+		exit 1
+	}
+	printf '{ "request": [ ["redirect", "%s", 302] ] }' "$login_url" > /tmp/fbwifi/uhttpd-redirect.json
+
+	/etc/init.d/uhttpd restart
+
+	exit 0
+	;;
 esac
 
 uci commit
+/etc/init.d/uhttpd restart
 reload_config

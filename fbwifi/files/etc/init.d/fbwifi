@@ -4,16 +4,6 @@ START=90
 
 USE_PROCD=1
 
-update_crontab() {
-	WIP=$( mktemp )
-	crontab -l > ${WIP}
-	grep -q "fbwifi_validate_token_db" ${WIP} && return
-
-	echo '*/5 * * * * /usr/sbin/fbwifi_validate_token_db' >> ${WIP}
-	crontab ${WIP}
-	/etc/init.d/cron restart
-}
-
 reload_service() {
 	restart
 }
@@ -44,16 +34,10 @@ start_service() {
 
 	mkdir -p /tmp/fbwifi
 
-	update_crontab
+	/usr/sbin/fbwifi reload
 
-	/usr/sbin/fbwifi_get_config
-
-	login_url=$(uci -p /var/state get fbwifi.main.captive_portal_url)
-	[ -z "$login_url" ] && {
-		logger -t fbwifi "captive_portal_url not available yet"
-		exit 1
-	}
-	printf '{ "request": [ ["redirect", "%s", 302] ] }' "$login_url" > /tmp/fbwifi/uhttpd-redirect.json
-
-	/etc/init.d/uhttpd restart
+	procd_open_instance
+	procd_set_param command /usr/sbin/fbwifi_validate_token_db
+	procd_set_param respawn 1 300 0
+	procd_close_instance
 }
