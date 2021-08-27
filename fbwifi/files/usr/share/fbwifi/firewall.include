@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (c) Facebook, Inc. and its affiliates.
+
 IPT4="/usr/sbin/iptables"
 
 fbwifi_http_port="$(uci get fbwifi.main.http_port)"
