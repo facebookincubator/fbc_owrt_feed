@@ -57,8 +57,10 @@ $IPT4 -t mangle -A FBWIFI_PREROUTING -j FBWIFI_TRAFFIC_ALLOWLIST
 $IPT4 -t nat -A FBWIFI_PREROUTING -j FBWIFI_CLIENT_TO_INTERNET
 $IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p tcp --dport 80 -m conntrack --ctstate NEW -j FBWIFI_HOST_REDIRLIST
 $IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p tcp --dport 443 -m conntrack --ctstate NEW -j FBWIFI_HOST_REDIRLIST
+$IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p udp --dport 443 -m conntrack --ctstate NEW -j FBWIFI_HOST_REDIRLIST
 $IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p tcp --dport 80 -m conntrack --ctstate NEW -m mark --mark 0xfb -j ACCEPT
 $IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p tcp --dport 443 -m conntrack --ctstate NEW -m mark --mark 0xfb -j ACCEPT
+$IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p udp --dport 443 -m conntrack --ctstate NEW -m mark --mark 0xfb -j ACCEPT
 $IPT4 -t nat -A FBWIFI_CLIENT_TO_INTERNET -p tcp --dport 80 -m conntrack --ctstate NEW -j REDIRECT --to-ports "$fbwifi_http_port"
 
 ## Hook custom chains in firewall3 chains
