@@ -43,7 +43,7 @@ elseif method == 'POST' then
 		if string.len(token or '') > 14 then
 
 			client = os.getenv("REMOTE_ADDR")
-			f = io.popen("awk '/"..client.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
+			f = io.popen("awk '/"..client..".*0x2/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
 			client_mac = assert(f:read('*a'))
 			f:close()
 
