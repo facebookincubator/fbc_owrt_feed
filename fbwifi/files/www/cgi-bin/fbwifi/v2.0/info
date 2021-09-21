@@ -40,6 +40,7 @@ end
 function getClientToken(client_ip)
 	f = io.popen("awk '/"..client_ip.."/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
 	client_mac = assert(f:read('*a'))
+	f:close()
 
 	state:foreach("fbwifi", "client", map_remote_mac_to_token)
 end

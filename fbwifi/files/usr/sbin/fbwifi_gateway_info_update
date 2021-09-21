@@ -19,6 +19,7 @@ function queue_ssid_update(iface)
             for line in file:lines() do
 		payload=payload.."&bssid[]="..line
             end
+	    file:close()
 	    payload=payload.."ssid[]="..iface["ssid"]
         else
 	    log.syslog(log.LOG_WARNING, "[fbwifi] Failed to find BSSID for interface br-"..iface["network"])
