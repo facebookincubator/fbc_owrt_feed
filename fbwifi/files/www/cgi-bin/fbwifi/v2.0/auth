@@ -25,7 +25,7 @@ end
 method = os.getenv("REQUEST_METHOD")
 if method == 'GET' then
 	log.syslog(log.LOG_INFO, "[fbwifi] [auth] GET handler")
-	print("Status: 302")
+	print("Status: 302 Found")
 	print("Location: "..state:get("fbwifi", "main", "landing_page_url"))
 	process_cors()
 	print ('\n')
@@ -35,7 +35,7 @@ elseif method == 'POST' then
 	
 	log.syslog(log.LOG_INFO, "[fbwifi] [auth] POST handler")
 	process_cors()
-	print("Status: 200")
+	print("Status: 200 OK")
 
 	form_data=io.read()
 	while form_data do
