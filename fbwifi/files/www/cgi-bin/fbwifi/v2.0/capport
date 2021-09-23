@@ -2,7 +2,7 @@
 json = require("cjson")
 require("uci")
 
-state = uci.cursor(nil, "/var/state")
+state = uci.cursor("/var/state", "/tmp/fbwifi")
 client_mac = ""
 token = ""
 

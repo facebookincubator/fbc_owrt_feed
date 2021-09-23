@@ -3,7 +3,7 @@ require("uci")
 log = require("posix.syslog")
 fbwifi = require("fbwifi")
 
-state = uci.cursor(nil, "/var/state")
+state = uci.cursor("/var/state", "/tmp/fbwifi")
 function process_cors()
 	origin = os.getenv("HTTP_ORIGIN")
 	log.syslog(log.LOG_INFO, string.format("[fbwifi] [auth] process_cors origin %s", origin or 'not found') )

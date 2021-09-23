@@ -4,7 +4,7 @@ require "luci.sgi.cgi"
 json = require("cjson")
 fbwifi = require("fbwifi")
 
-state = uci.cursor(nil, "/var/state")
+state = uci.cursor("/var/state", "/tmp/fbwifi")
 GATEWAY_TOKEN = fbwifi.gateway_token()
 
 response = { api_version = "2.0", token = json.null }

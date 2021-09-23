@@ -8,7 +8,7 @@ require("uci")
 fbwifi = require("fbwifi")
 
 GATEWAY_TOKEN = fbwifi.gateway_token()
-state = uci.cursor(nil, "/var/state")
+state = uci.cursor("/var/state", "/tmp/fbwifi")
 
 payload="name="..socket.dns.gethostname()
 

@@ -40,7 +40,7 @@ enable)
 reload)
 	/usr/sbin/fbwifi_get_config
 
-	login_url=$(uci -p /var/state get fbwifi.main.captive_portal_url)
+	login_url=$(uci -c /var/state get fbwifi.main.captive_portal_url)
 	[ -z "$login_url" ] && {
 		logger -t fbwifi "captive_portal_url not available yet"
 		exit 1
