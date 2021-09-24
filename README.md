@@ -10,7 +10,8 @@ This repository is intended to be layered on-top of an OpenWrt buildroot. If you
 
 This feed needs to be added to your buildroot configuration. To install all its package definitions, run:
 ```
-echo "src-git fbc https://github.com/facebookincubator/fbc_owrt_feed.git" >> feeds.conf.default
+echo "cp feeds.conf.default feeds.conf"
+echo "src-git fbc https://github.com/facebookincubator/fbc_owrt_feed.git" >> feeds.conf
 ./scripts/feeds update fbc
 ./scripts/feeds install -a -p fbc
 ./scripts/feeds install -a
