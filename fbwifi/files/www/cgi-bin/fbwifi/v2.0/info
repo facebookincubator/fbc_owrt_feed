@@ -1,5 +1,4 @@
 #!/usr/bin/lua
-require "luci.sgi.cgi"
 json = require("cjson")
 fbwifi = require("fbwifi")
 
