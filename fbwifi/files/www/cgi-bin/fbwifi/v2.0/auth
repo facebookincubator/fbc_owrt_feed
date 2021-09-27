@@ -43,9 +43,7 @@ elseif method == 'POST' then
 		if string.len(token or '') > 14 then
 
 			client = os.getenv("REMOTE_ADDR")
-			f = io.popen("awk '/"..client..".*0x2/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
-			client_mac = assert(f:read('*a'))
-			f:close()
+			client_mac = fbwifi.lookup_mac_by_ip(client)
 
 			if fbwifi.validate_token(token) then
                                 log.syslog(log.LOG_INFO, string.format( "[fbwifi] [auth] POST handler : Validating Token (%s) for MAC (%s)", token or 'nil', client_mac or 'nil') )

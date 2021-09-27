@@ -6,6 +6,7 @@
 local fbwifi = {}
 
 local http = require("ssl.https")
+local ip = require "luci.ip"
 local json = require("cjson")
 local log = require("posix.syslog")
 local uci = require("uci")
@@ -148,6 +149,17 @@ function fbwifi.reset()
         end
 
 	return success
+end
+
+function fbwifi.lookup_mac_by_ip(client_ip)
+	local neigh = ip.neighbors({ dest = ip })[1]
+	local mac = nil
+
+	if neigh then
+		mac = tostring(neigh.mac)
+	end
+
+	return mac
 end
 
 --

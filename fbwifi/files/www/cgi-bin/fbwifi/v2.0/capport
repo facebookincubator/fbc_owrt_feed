@@ -22,9 +22,7 @@ function map_remote_mac_to_token(client)
 end
 
 function hasValidToken(client_ip)
-	f = io.popen("awk '/"..client_ip..".*0x2/ { printf(\"%s\", $4) }' /proc/net/arp", 'r')
-	client_mac = assert(f:read('*a'))
-	f:close()
+	client_mac = fbwifi.lookup_mac_by_ip(client)
 	state:foreach("fbwifi", "client", map_remote_mac_to_token)
 
 	return 0 < string.len(token)
