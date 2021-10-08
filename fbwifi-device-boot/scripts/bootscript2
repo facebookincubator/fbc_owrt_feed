@@ -1,0 +1,20 @@
+#!/bin/sh
+logger -t fbwifi-device "launched bootscript2"
+
+# Set LAN (wireless) IP subnet to something that does not conflict with WAN IP subnet
+ROUTER_IP=$(ip route | grep default | awk '{print $3}')
+if [[ $ROUTER_IP == "192*" ]]; then
+	MY_LAN_IP="172.16.0.1"
+else
+	MY_LAN_IP="192.168.0.1"
+fi
+logger -t fbwifi-device "ROUTER_IP is $ROUTER_IP, so MY_LAN_IP will be $MY_LAN_IP"
+uci set network.lan.ipaddr="$MY_LAN_IP"
+
+# Finally, open up WiFi (no encryption) so users can connect.
+# TODO: Wait for the FBWiFi Captive Portal to be in place before doing this.
+uci set wireless.default_radio0.ssid="FBWiFi Setup"
+uci set wireless.default_radio0.encryption="none"
+
+uci commit
+reload_config
